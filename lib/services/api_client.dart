@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-final apiClientProvider = Provider<Dio>((ref) {
+Dio createApiClient() {
   final dio = Dio(
     BaseOptions(
       baseUrl: const String.fromEnvironment(
@@ -25,4 +24,4 @@ final apiClientProvider = Provider<Dio>((ref) {
   );
 
   return dio;
-});
+}

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../application/auth/auth_controller.dart';
-import '../application/auth/auth_state.dart';
+
+import '../features/auth/auth_controller.dart';
+import '../features/auth/auth_state.dart';
 import '../theme/color_tokens.dart';
 import '../theme/text_styles.dart';
 import '../widgets/primary_button.dart';
@@ -16,45 +18,130 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _otpController = TextEditingController();
   final _displayNameController = TextEditingController();
-  bool _isLoginMode = true;
+
+  bool _otpRequested = false;
+  String? _normalizedPhone;
+  String? _debugCode;
+  bool _isVerifying = false;
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
+    _phoneController.dispose();
+    _otpController.dispose();
     _displayNameController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleSubmit() async {
+  Future<void> _handleRequestOtp() async {
+    _isVerifying = false;
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    final authNotifier = ref.read(authControllerProvider.notifier);
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-    final displayName = _displayNameController.text.trim();
+    final authController = ref.read(authControllerProvider.notifier);
+    final result =
+        await authController.requestOtp(_phoneController.text.trim());
 
-    bool success;
+    if (result != null) {
+      setState(() {
+        _otpRequested = true;
+        _normalizedPhone = result.phoneNumber;
+        _debugCode = result.code;
+      });
+      _otpController.clear();
+    }
+  }
 
-    if (_isLoginMode) {
-      success = await authNotifier.login(email, password);
-    } else {
-      success = await authNotifier.register(email, password, displayName);
+  Future<void> _handleVerify() async {
+    _isVerifying = true;
+    final isValid = _formKey.currentState!.validate();
+    _isVerifying = false;
+
+    if (!isValid) {
+      return;
     }
 
-    if (success && mounted) {
-      context.go('/conversations');
+    final authController = ref.read(authControllerProvider.notifier);
+    final phoneNumber = _normalizedPhone ?? _phoneController.text.trim();
+    final displayName = _displayNameController.text.trim().isEmpty
+        ? null
+        : _displayNameController.text.trim();
+
+    await authController.verifyOtp(
+      phoneNumber: phoneNumber,
+      code: _otpController.text.trim(),
+      displayName: displayName,
+    );
+  }
+
+  void _resetOtpRequest() {
+    setState(() {
+      _otpRequested = false;
+      _normalizedPhone = null;
+      _debugCode = null;
+    });
+    _otpController.clear();
+  }
+
+  String? _validatePhone(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Phone number is required';
     }
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length < 10 || digits.length > 15) {
+      return 'Enter a valid phone number';
+    }
+    return null;
+  }
+
+  String? _validateOtp(String? value) {
+    if (!_otpRequested || !_isVerifying) {
+      return null;
+    }
+
+    if (value == null || value.isEmpty) {
+      return 'Enter the 6-digit code';
+    }
+
+    if (!RegExp(r'^\d{6}$').hasMatch(value)) {
+      return 'OTP must be 6 digits';
+    }
+
+    return null;
+  }
+
+  String? _validateDisplayName(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+
+    if (value.trim().length < 2) {
+      return 'Too short';
+    }
+
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AuthState>(
+      authControllerProvider,
+      (previous, next) {
+        if (previous?.isAuthenticated != next.isAuthenticated &&
+            next.isAuthenticated) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            context.go('/conversations');
+          });
+        }
+      },
+    );
+
     final authState = ref.watch(authControllerProvider);
+    final isLoading = authState.isLoading;
 
     return Scaffold(
       body: Stack(
@@ -81,7 +168,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Where conversations feel alive.',
+                    'Sign in with your phone number to continue.',
                     style: AppTextStyles.darkTextTheme.bodyLarge,
                   ),
                 ],
@@ -109,90 +196,75 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: SingleChildScrollView(
                 child: Form(
                   key: _formKey,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _isLoginMode ? 'Welcome back' : 'Create account',
-                            style: AppTextStyles.lightTextTheme.titleMedium,
-                          ),
-                          TextButton(
-                            onPressed: () => setState(() => _isLoginMode = !_isLoginMode),
-                            child: Text(_isLoginMode ? 'Need an account?' : 'Have an account?'),
-                          ),
-                        ],
+                      Text(
+                        _otpRequested
+                            ? 'Enter the OTP we sent'
+                            : 'Welcome back',
+                        style: AppTextStyles.lightTextTheme.titleMedium,
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        _isLoginMode
-                            ? 'Sign in to pick up where you left off.'
-                            : 'Just a few details and you are in.',
+                        _otpRequested
+                            ? 'We sent a 6-digit code to ${_normalizedPhone ?? _phoneController.text.trim()}.'
+                            : 'We will send a one-time password to your phone.',
                         style: AppTextStyles.lightTextTheme.bodyMedium,
                       ),
                       const SizedBox(height: 28),
                       TextFormField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
                         decoration: const InputDecoration(
-                          labelText: 'Work email',
-                          prefixIcon: Icon(Icons.email_outlined),
+                          labelText: 'Phone number',
+                          prefixIcon: Icon(Icons.phone_outlined),
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Email is required';
-                          }
-                          if (!value.contains('@')) {
-                            return 'Enter a valid email address';
-                          }
-                          return null;
-                        },
+                        enabled: !isLoading && !_otpRequested,
+                        validator: _validatePhone,
                       ),
                       const SizedBox(height: 16),
-                      if (!_isLoginMode)
-                        Column(
-                          children: [
-                            TextFormField(
-                              controller: _displayNameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Display name',
-                                prefixIcon: Icon(Icons.person_outline),
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'We need your name';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
+                      if (_otpRequested) ...[
+                        TextFormField(
+                          controller: _otpController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: '6-digit code',
+                            prefixIcon: Icon(Icons.key_outlined),
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(6),
                           ],
+                          validator: _validateOtp,
                         ),
-                      TextFormField(
-                        controller: _passwordController,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: Icon(Icons.lock_outline),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _displayNameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Display name (optional)',
+                            helperText:
+                                'We will use this if you are signing in for the first time.',
+                            prefixIcon: Icon(Icons.person_outline),
+                          ),
+                          textCapitalization: TextCapitalization.words,
+                          validator: _validateDisplayName,
                         ),
-                        validator: (value) {
-                          if (value == null || value.length < 8) {
-                            return 'Password must be at least 8 characters';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () {},
-                          child: const Text('Forgot password?'),
+                        const SizedBox(height: 12),
+                      ],
+                      if (_debugCode != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            'Development code: $_debugCode',
+                            style: const TextStyle(
+                              color: AppColors.secondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
-                      ),
                       if (authState.errorMessage != null)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
@@ -201,45 +273,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             style: const TextStyle(color: AppColors.danger),
                           ),
                         ),
-                      const SizedBox(height: 16),
                       PrimaryButton(
-                        label: _isLoginMode ? 'Sign in' : 'Create account',
-                        isLoading: authState.isLoading,
-                        onPressed: authState.isLoading ? null : _handleSubmit,
+                        label:
+                            _otpRequested ? 'Verify and Continue' : 'Send OTP',
+                        isLoading: isLoading,
+                        onPressed: isLoading
+                            ? null
+                            : (_otpRequested
+                                ? _handleVerify
+                                : _handleRequestOtp),
                       ),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: const [
-                          Expanded(child: Divider()),
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 12),
-                            child: Text('or continue with'),
-                          ),
-                          Expanded(child: Divider()),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Wrap(
-                        spacing: 16,
-                        runSpacing: 12,
-                        children: [
-                          _SocialButton(
-                            icon: Icons.apple,
-                            label: 'Apple',
-                            onTap: () {},
-                          ),
-                          _SocialButton(
-                            icon: Icons.g_mobiledata,
-                            label: 'Google',
-                            onTap: () {},
-                          ),
-                          _SocialButton(
-                            icon: Icons.more_horiz,
-                            label: 'SSO',
-                            onTap: () {},
-                          ),
-                        ],
-                      ),
+                      if (_otpRequested) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            TextButton(
+                              onPressed: isLoading ? null : _resetOtpRequest,
+                              child: const Text('Change phone number'),
+                            ),
+                            TextButton(
+                              onPressed: isLoading ? null : _handleRequestOtp,
+                              child: const Text('Resend code'),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -247,42 +306,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SocialButton extends StatelessWidget {
-  const _SocialButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 110,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 20),
-            const SizedBox(width: 8),
-            Text(label),
-          ],
-        ),
       ),
     );
   }

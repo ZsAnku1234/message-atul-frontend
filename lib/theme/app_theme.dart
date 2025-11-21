@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'color_tokens.dart';
 import 'text_styles.dart';
 
@@ -26,7 +25,8 @@ class AppTheme {
         cardTheme: CardThemeData(
           elevation: 0,
           color: AppColors.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
@@ -34,7 +34,8 @@ class AppTheme {
           hintStyle: AppTextStyles.lightTextTheme.bodyMedium,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(color: AppColors.textSecondary.withOpacity(0.1)),
+            borderSide:
+                BorderSide(color: AppColors.textSecondary.withOpacity(0.1)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
@@ -45,7 +46,8 @@ class AppTheme {
           style: ElevatedButton.styleFrom(
             elevation: 0,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
         ),
       );
@@ -71,7 +73,8 @@ class AppTheme {
         cardTheme: CardThemeData(
           elevation: 0,
           color: AppColors.surfaceDark,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
@@ -88,5 +91,3 @@ class AppTheme {
         ),
       );
 }
-
-final appThemeProvider = Provider<AppTheme>((ref) => AppTheme());

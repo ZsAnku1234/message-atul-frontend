@@ -20,7 +20,8 @@ class PrimaryButton extends StatelessWidget {
     return ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
-        backgroundColor: onPressed == null ? Colors.grey.shade400 : AppColors.primary,
+        backgroundColor:
+            onPressed == null ? Colors.grey.shade400 : AppColors.primary,
         foregroundColor: Colors.white,
         textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
         minimumSize: const Size.fromHeight(56),

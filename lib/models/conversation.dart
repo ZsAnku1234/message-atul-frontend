@@ -6,9 +6,14 @@ class ConversationSummary {
     required this.id,
     required this.participants,
     required this.lastActivity,
+    required this.createdBy,
     this.title,
     this.lastMessage,
     this.unreadCount = 0,
+    this.isGroup = false,
+    this.isPrivate = false,
+    this.adminIds = const [],
+    this.adminOnlyMessaging = false,
   });
 
   final String id;
@@ -17,6 +22,11 @@ class ConversationSummary {
   final Message? lastMessage;
   final DateTime lastActivity;
   final int unreadCount;
+  final String createdBy;
+  final bool isGroup;
+  final bool isPrivate;
+  final List<String> adminIds;
+  final bool adminOnlyMessaging;
 
   String get displayTitle {
     if (title != null && title!.trim().isNotEmpty) {
@@ -31,17 +41,37 @@ class ConversationSummary {
   }
 
   factory ConversationSummary.fromJson(Map<String, dynamic> json) {
+    final id = _coerceId(json['id']) ?? _coerceId(json['_id']) ?? '';
+    final createdBy =
+        _coerceId(json['createdBy']) ?? _coerceId(json['created_by']) ?? '';
+    final adminSource = (json['adminIds'] as List<dynamic>?) ??
+        (json['admins'] as List<dynamic>? ?? []);
+    final lastActivityString = json['lastActivity'] as String? ??
+        json['lastMessageAt'] as String? ??
+        json['updatedAt'] as String?;
+
     return ConversationSummary(
-      id: json['id'] as String,
+      id: id,
       title: json['title'] as String?,
       participants: (json['participants'] as List<dynamic>)
-          .map((dynamic user) => UserProfile.fromJson(user as Map<String, dynamic>))
+          .map((dynamic user) =>
+              UserProfile.fromJson(user as Map<String, dynamic>))
           .toList(),
       lastMessage: json['lastMessage'] != null
           ? Message.fromJson(json['lastMessage'] as Map<String, dynamic>)
           : null,
-      lastActivity: DateTime.parse(json['lastActivity'] as String),
+      lastActivity: lastActivityString != null
+          ? DateTime.tryParse(lastActivityString) ?? DateTime.now()
+          : DateTime.now(),
       unreadCount: json['unreadCount'] as int? ?? 0,
+      createdBy: createdBy,
+      isGroup: json['isGroup'] as bool? ?? false,
+      isPrivate: json['isPrivate'] as bool? ?? false,
+      adminIds: adminSource
+          .map((dynamic id) => _coerceId(id))
+          .whereType<String>()
+          .toList(),
+      adminOnlyMessaging: json['adminOnlyMessaging'] as bool? ?? false,
     );
   }
 
@@ -49,14 +79,62 @@ class ConversationSummary {
     Message? lastMessage,
     DateTime? lastActivity,
     int? unreadCount,
+    String? title,
+    bool? isGroup,
+    bool? isPrivate,
+    List<String>? adminIds,
+    bool? adminOnlyMessaging,
   }) {
     return ConversationSummary(
       id: id,
-      title: title,
+      title: title ?? this.title,
       participants: participants,
       lastMessage: lastMessage ?? this.lastMessage,
       lastActivity: lastActivity ?? this.lastActivity,
       unreadCount: unreadCount ?? this.unreadCount,
+      createdBy: createdBy,
+      isGroup: isGroup ?? this.isGroup,
+      isPrivate: isPrivate ?? this.isPrivate,
+      adminIds: adminIds ?? this.adminIds,
+      adminOnlyMessaging: adminOnlyMessaging ?? this.adminOnlyMessaging,
     );
   }
+
+  UserProfile? participantForDisplay(String? currentUserId) {
+    if (participants.isEmpty) {
+      return null;
+    }
+
+    if (isGroup || currentUserId == null) {
+      return participants.first;
+    }
+
+    return participants.firstWhere(
+      (participant) => participant.id != currentUserId,
+      orElse: () => participants.first,
+    );
+  }
+
+  String titleFor(String? currentUserId) {
+    if (isGroup || currentUserId == null) {
+      return displayTitle;
+    }
+    return participantForDisplay(currentUserId)?.displayName ?? displayTitle;
+  }
+}
+
+String? _coerceId(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is String && value.trim().isNotEmpty) {
+    return value;
+  }
+  if (value is Map) {
+    final map = Map<String, dynamic>.from(value as Map);
+    final nested = map['id'] ?? map['_id'];
+    return _coerceId(nested);
+  }
+  final converted = value.toString().trim();
+  return converted.isEmpty ? null : converted;
 }

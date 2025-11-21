@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../application/auth/auth_controller.dart';
+
+import '../features/auth/auth_controller.dart';
 import '../models/user.dart';
 import '../theme/color_tokens.dart';
 import '../widgets/app_avatar.dart';
@@ -77,10 +78,9 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 20),
                   _SupportPanel(onSignOut: () async {
+                    final router = GoRouter.of(context);
                     await ref.read(authControllerProvider.notifier).signOut();
-                    if (context.mounted) {
-                      context.go('/auth');
-                    }
+                    router.go('/auth');
                   }),
                 ],
               ),
@@ -170,7 +170,7 @@ class _ProfileAppBar extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        user.email,
+                        user.phoneNumber,
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.72),
                         ),
@@ -323,7 +323,9 @@ class _SummaryMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final baseColor = theme.brightness == Brightness.dark ? AppColors.surfaceDark : Colors.white;
+    final baseColor = theme.brightness == Brightness.dark
+        ? AppColors.surfaceDark
+        : Colors.white;
 
     return Container(
       width: 120,
@@ -357,7 +359,9 @@ class _SummaryMetric extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: theme.brightness == Brightness.dark ? Colors.white70 : Colors.grey.shade600,
+              color: theme.brightness == Brightness.dark
+                  ? Colors.white70
+                  : Colors.grey.shade600,
             ),
           ),
         ],
@@ -423,7 +427,9 @@ class _HighlightCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final baseColor = theme.brightness == Brightness.dark ? AppColors.surfaceDark : Colors.white;
+    final baseColor = theme.brightness == Brightness.dark
+        ? AppColors.surfaceDark
+        : Colors.white;
 
     return Container(
       width: 230,
@@ -472,7 +478,9 @@ class _HighlightCard extends StatelessWidget {
             subtitle,
             style: TextStyle(
               fontSize: 12,
-              color: theme.brightness == Brightness.dark ? Colors.white70 : Colors.grey.shade600,
+              color: theme.brightness == Brightness.dark
+                  ? Colors.white70
+                  : Colors.grey.shade600,
             ),
           ),
         ],
@@ -496,7 +504,8 @@ class _SettingsSection extends StatelessWidget {
       children: [
         Text(
           title,
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 14),
         Container(
@@ -607,7 +616,8 @@ class _SupportPanel extends StatelessWidget {
         children: [
           Text(
             'Support & trust',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 12),
           Row(
@@ -619,7 +629,8 @@ class _SupportPanel extends StatelessWidget {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(Icons.headset_mic_outlined, color: AppColors.primary),
+                child: const Icon(Icons.headset_mic_outlined,
+                    color: AppColors.primary),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -659,7 +670,9 @@ class _SupportPanel extends StatelessWidget {
                 child: PrimaryButton(
                   label: 'Sign out',
                   icon: Icons.logout,
-                  onPressed: onSignOut,
+                  onPressed: () {
+                    onSignOut();
+                  },
                 ),
               ),
             ],

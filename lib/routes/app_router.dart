@@ -1,37 +1,52 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../application/auth/auth_controller.dart';
+
+import '../features/auth/auth_controller.dart';
+import '../features/auth/auth_state.dart';
 import '../screens/chat_screen.dart';
 import '../screens/conversation_list_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/profile_screen.dart';
 
-class GoRouterRefreshStream extends ChangeNotifier {
-  GoRouterRefreshStream(Stream<dynamic> stream) {
-    _subscription = stream.listen((_) => notifyListeners());
+class RouterNotifier extends ChangeNotifier {
+  RouterNotifier(this.ref) {
+    _subscription = ref.listen<AuthState>(
+      authControllerProvider,
+      (previous, next) {
+        if (previous?.isAuthenticated != next.isAuthenticated) {
+          notifyListeners();
+        }
+      },
+    );
   }
 
-  late final StreamSubscription<dynamic> _subscription;
+  final Ref ref;
+  late final ProviderSubscription<AuthState> _subscription;
+
+  bool get isAuthenticated => ref.read(authControllerProvider).isAuthenticated;
 
   @override
   void dispose() {
-    _subscription.cancel();
+    _subscription.close();
     super.dispose();
   }
 }
 
-final appRouterProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authControllerProvider);
-  final notifier = ref.watch(authControllerProvider.notifier);
+final routerNotifierProvider = Provider<RouterNotifier>((ref) {
+  final notifier = RouterNotifier(ref);
+  ref.onDispose(notifier.dispose);
+  return notifier;
+});
 
-  return GoRouter(
+final appRouterProvider = Provider<GoRouter>((ref) {
+  final notifier = ref.watch(routerNotifierProvider);
+
+  final router = GoRouter(
     initialLocation: '/auth',
-    refreshListenable: GoRouterRefreshStream(notifier.stream),
+    refreshListenable: notifier,
     redirect: (context, state) {
-      final isLoggedIn = authState.isAuthenticated;
+      final isLoggedIn = notifier.isAuthenticated;
       final goingToAuth = state.matchedLocation == '/auth';
 
       if (!isLoggedIn) {
@@ -58,7 +73,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: ':id',
             name: 'conversation',
-            builder: (context, state) => ChatScreen(conversationId: state.pathParameters['id']!),
+            builder: (context, state) => ChatScreen(
+              conversationId: state.pathParameters['id']!,
+            ),
           ),
         ],
       ),
@@ -69,4 +86,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+
+  ref.onDispose(router.dispose);
+  return router;
 });

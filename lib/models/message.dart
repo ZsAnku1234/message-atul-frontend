@@ -23,9 +23,12 @@ class Message {
   String get formattedTime => DateFormat('h:mm a').format(createdAt);
 
   factory Message.fromJson(Map<String, dynamic> json) {
+    final conversationField = json['conversationId'] ?? json['conversation'];
+    final conversationId = _coerceId(conversationField) ?? '';
+
     return Message(
-      id: json['id'] as String,
-      conversationId: json['conversationId'] as String,
+      id: _coerceId(json['id']) ?? _coerceId(json['_id']) ?? '',
+      conversationId: conversationId,
       sender: UserProfile.fromJson(json['sender'] as Map<String, dynamic>),
       body: json['content'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
@@ -47,4 +50,20 @@ class Message {
       isMine: isMine ?? this.isMine,
     );
   }
+}
+
+String? _coerceId(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is String && value.trim().isNotEmpty) {
+    return value;
+  }
+  if (value is Map) {
+    final map = Map<String, dynamic>.from(value as Map);
+    final nested = map['id'] ?? map['_id'];
+    return _coerceId(nested);
+  }
+  final converted = value.toString().trim();
+  return converted.isEmpty ? null : converted;
 }

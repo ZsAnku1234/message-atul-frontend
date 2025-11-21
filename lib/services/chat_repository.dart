@@ -1,9 +1,7 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/conversation.dart';
 import '../models/message.dart';
-import '../models/user.dart';
-import 'api_client.dart';
+import 'chat_mapper.dart';
 
 class ChatRepository {
   ChatRepository(this._dio);
@@ -14,16 +12,20 @@ class ChatRepository {
     final response = await _dio.get<Map<String, dynamic>>('/conversations');
     final items = response.data!['conversations'] as List<dynamic>;
     return items
-        .map((dynamic json) => _mapConversation(json as Map<String, dynamic>))
+        .map((dynamic json) =>
+            ChatMapper.mapConversation(Map<String, dynamic>.from(json as Map)))
         .toList();
   }
 
-  Future<(ConversationSummary, List<Message>)> fetchConversationDetail(String id) async {
+  Future<(ConversationSummary, List<Message>)> fetchConversationDetail(
+      String id) async {
     final response = await _dio.get<Map<String, dynamic>>('/conversations/$id');
     final data = response.data!;
-    final conversation = _mapConversation(data['conversation'] as Map<String, dynamic>);
+    final conversation = ChatMapper.mapConversation(
+        Map<String, dynamic>.from(data['conversation'] as Map));
     final messages = (data['messages'] as List<dynamic>)
-        .map((dynamic json) => _mapMessage(json as Map<String, dynamic>))
+        .map((dynamic json) =>
+            ChatMapper.mapMessage(Map<String, dynamic>.from(json as Map)))
         .toList()
         .reversed
         .toList();
@@ -33,78 +35,121 @@ class ChatRepository {
   Future<Message> sendMessage({
     required String conversationId,
     required String content,
+    List<String> attachments = const [],
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
       '/messages',
       data: {
         'conversationId': conversationId,
         'content': content,
+        if (attachments.isNotEmpty) 'attachments': attachments,
       },
     );
 
-    return _mapMessage(response.data!['message'] as Map<String, dynamic>);
+    return ChatMapper.mapMessage(
+        Map<String, dynamic>.from(response.data!['message'] as Map));
   }
 
-  Future<ConversationSummary> createConversation(List<String> participantIds) async {
+  Future<ConversationSummary> createConversation({
+    required List<String> participantIds,
+    String? title,
+    bool isPrivate = false,
+  }) async {
+    final payload = <String, dynamic>{
+      'participantIds': participantIds,
+    };
+    if (title != null && title.trim().isNotEmpty) {
+      payload['title'] = title.trim();
+    }
+    if (isPrivate) {
+      payload['isPrivate'] = true;
+    }
+
     final response = await _dio.post<Map<String, dynamic>>(
       '/conversations',
+      data: payload,
+    );
+
+    final raw =
+        Map<String, dynamic>.from(response.data!['conversation'] as Map);
+    final participants = raw['participants'];
+
+    if (participants is List &&
+        participants.isNotEmpty &&
+        participants.first is! Map) {
+      final rawId = raw['id'] ?? raw['_id'];
+      final id = rawId is String ? rawId : rawId?.toString();
+      if (id == null || id.isEmpty) {
+        throw StateError('Conversation id missing from create response.');
+      }
+      final details = await fetchConversationDetail(id);
+      return details.$1;
+    }
+
+    return ChatMapper.mapConversation(raw);
+  }
+
+  Future<ConversationSummary> updateAdmins({
+    required String conversationId,
+    List<String> add = const [],
+    List<String> remove = const [],
+  }) async {
+    final payload = <String, dynamic>{};
+    if (add.isNotEmpty) {
+      payload['add'] = add;
+    }
+    if (remove.isNotEmpty) {
+      payload['remove'] = remove;
+    }
+
+    if (payload.isEmpty) {
+      throw ArgumentError('At least one admin change is required.');
+    }
+
+    final response = await _dio.patch<Map<String, dynamic>>(
+      '/conversations/$conversationId/admins',
+      data: payload,
+    );
+
+    return ChatMapper.mapConversation(
+      Map<String, dynamic>.from(response.data!['conversation'] as Map),
+    );
+  }
+
+  Future<ConversationSummary> setAdminOnlyMessaging({
+    required String conversationId,
+    required bool adminOnlyMessaging,
+  }) async {
+    final response = await _dio.patch<Map<String, dynamic>>(
+      '/conversations/$conversationId/message-control',
+      data: {'adminOnlyMessaging': adminOnlyMessaging},
+    );
+
+    return ChatMapper.mapConversation(
+      Map<String, dynamic>.from(response.data!['conversation'] as Map),
+    );
+  }
+
+  Future<ConversationSummary> addParticipants({
+    required String conversationId,
+    required List<String> participantIds,
+  }) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/conversations/$conversationId/participants',
       data: {'participantIds': participantIds},
     );
 
-    return _mapConversation(response.data!['conversation'] as Map<String, dynamic>);
-  }
-
-  ConversationSummary _mapConversation(Map<String, dynamic> json) {
-    return ConversationSummary(
-      id: json['id'] as String? ?? json['_id'] as String,
-      title: json['title'] as String?,
-      participants: (json['participants'] as List<dynamic>? ?? [])
-          .map((dynamic user) => UserProfile.fromJson(_mergeUser(user)))
-          .toList(),
-      lastMessage: json['lastMessage'] != null
-          ? _mapMessage(json['lastMessage'] as Map<String, dynamic>)
-          : null,
-      lastActivity: DateTime.parse(
-        json['lastMessageAt'] as String? ??
-            json['updatedAt'] as String? ??
-            DateTime.now().toIso8601String(),
-      ),
-      unreadCount: json['unreadCount'] as int? ?? 0,
+    return ChatMapper.mapConversation(
+      Map<String, dynamic>.from(response.data!['conversation'] as Map),
     );
   }
 
-  Message _mapMessage(Map<String, dynamic> json) {
-    return Message(
-      id: json['id'] as String? ?? json['_id'] as String,
-      conversationId: json['conversation'] is Map<String, dynamic>
-          ? (json['conversation'] as Map<String, dynamic>)['id'] as String? ??
-              (json['conversation'] as Map<String, dynamic>)['_id'] as String
-          : json['conversation'] as String,
-      sender: UserProfile.fromJson(_mergeUser(json['sender'])),
-      body: json['content'] as String,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      attachments: (json['attachments'] as List<dynamic>? ?? [])
-          .map((dynamic url) => url as String)
-          .toList(),
-      isMine: false,
+  Future<void> removeParticipant({
+    required String conversationId,
+    required String participantId,
+  }) async {
+    await _dio.delete<void>(
+      '/conversations/$conversationId/participants/$participantId',
     );
-  }
-
-  Map<String, dynamic> _mergeUser(dynamic user) {
-    if (user is Map<String, dynamic>) {
-      return {
-        'id': user['id'] ?? user['_id'],
-        'email': user['email'],
-        'displayName': user['displayName'],
-        'avatarUrl': user['avatarUrl'],
-        'statusMessage': user['statusMessage'],
-      };
-    }
-
-    throw ArgumentError('Invalid user payload');
   }
 }
-
-final chatRepositoryProvider = Provider<ChatRepository>(
-  (ref) => ChatRepository(ref.watch(apiClientProvider)),
-);
