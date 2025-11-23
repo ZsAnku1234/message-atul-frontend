@@ -209,4 +209,35 @@ class AuthRepository {
       return null;
     }
   }
+
+  Future<UserProfile> updateProfile({
+    String? displayName,
+    String? avatarUrl,
+  }) async {
+    final request = <String, dynamic>{};
+    if (displayName != null) {
+      request['displayName'] = displayName;
+    }
+    if (avatarUrl != null) {
+      request['avatarUrl'] = avatarUrl;
+    }
+
+    print('Updating profile with request: $request');
+
+    final response = await _dio.put<Map<String, dynamic>>(
+      '/users/profile',
+      data: request,
+    );
+
+    final data = response.data!;
+    final user = UserProfile.fromJson(data['user'] as Map<String, dynamic>);
+    
+    print('Received updated user from server: ${user.displayName}, avatar: ${user.avatarUrl}');
+    
+    await _persistUser(user);
+    
+    print('User persisted to local storage');
+    
+    return user;
+  }
 }

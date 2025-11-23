@@ -1,18 +1,162 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:dio/dio.dart';
 
 import '../features/auth/auth_controller.dart';
 import '../models/user.dart';
+import '../providers/app_providers.dart';
 import '../theme/color_tokens.dart';
 import '../widgets/app_avatar.dart';
 import '../widgets/primary_button.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  bool _isEditing = false;
+  bool _isSaving = false;
+  bool _isUploadingAvatar = false;
+  late TextEditingController _nameController;
+  String? _errorMessage;
+  String? _tempAvatarUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = ref.read(authControllerProvider).user;
+    _nameController = TextEditingController(text: user?.displayName ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickAndUploadAvatar() async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      maxHeight: 800,
+      imageQuality: 85,
+    );
+
+    if (image == null) return;
+
+    setState(() {
+      _isUploadingAvatar = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final dio = ref.read(dioProvider);
+      
+      // Read image bytes for web compatibility
+      final bytes = await image.readAsBytes();
+      final fileName = image.name;
+      
+      final formData = FormData.fromMap({
+        'files': MultipartFile.fromBytes(
+          bytes,
+          filename: fileName.isEmpty ? 'avatar.jpg' : fileName,
+        ),
+      });
+
+      final response = await dio.post('/media/avatar', data: formData);
+      final avatarUrl = response.data['avatarUrl'] as String;
+
+      if (!mounted) return;
+
+      setState(() {
+        _tempAvatarUrl = avatarUrl;
+        _isUploadingAvatar = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      
+      String errorMsg = 'Failed to upload image. Please try again.';
+      if (error is DioException) {
+        if (error.response?.data != null) {
+          final data = error.response!.data;
+          if (data is Map && data['message'] != null) {
+            errorMsg = data['message'].toString();
+          }
+        } else if (error.message != null) {
+          errorMsg = 'Network error: ${error.message}';
+        }
+      }
+      
+      print('Avatar upload error: $error');
+      
+      setState(() {
+        _isUploadingAvatar = false;
+        _errorMessage = errorMsg;
+      });
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    final newName = _nameController.text.trim();
+    if (newName.isEmpty) {
+      setState(() {
+        _errorMessage = 'Display name cannot be empty';
+      });
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+      _errorMessage = null;
+    });
+
+    print('Saving profile with avatarUrl: $_tempAvatarUrl');
+    
+    final success = await ref.read(authControllerProvider.notifier).updateProfile(
+          displayName: newName,
+          avatarUrl: _tempAvatarUrl,
+        );
+
+    print('Profile save result: $success');
+    
+    if (!mounted) return;
+
+    if (success) {
+      // Get the updated user to verify
+      final updatedUser = ref.read(authControllerProvider).user;
+      print('Updated user avatar: ${updatedUser?.avatarUrl}');
+    }
+
+    setState(() {
+      _isSaving = false;
+      if (success) {
+        _isEditing = false;
+        _tempAvatarUrl = null;
+        _errorMessage = null;
+      } else {
+        _errorMessage = 'Failed to update profile. Please try again.';
+      }
+    });
+  }
+
+  void _cancelEdit() {
+    final user = ref.read(authControllerProvider).user;
+    setState(() {
+      _isEditing = false;
+      _errorMessage = null;
+      _tempAvatarUrl = null;
+      _nameController.text = user?.displayName ?? '';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
     final user = authState.user;
 
@@ -25,58 +169,33 @@ class ProfileScreen extends ConsumerWidget {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          _ProfileAppBar(user: user),
+          _ProfileAppBar(
+            user: user,
+            isEditing: _isEditing,
+            isSaving: _isSaving,
+            isUploadingAvatar: _isUploadingAvatar,
+            tempAvatarUrl: _tempAvatarUrl,
+            nameController: _nameController,
+            errorMessage: _errorMessage,
+            onEditToggle: () {
+              setState(() {
+                _isEditing = !_isEditing;
+                if (!_isEditing) {
+                  _nameController.text = user.displayName;
+                  _tempAvatarUrl = null;
+                  _errorMessage = null;
+                }
+              });
+            },
+            onPickAvatar: _pickAndUploadAvatar,
+            onSave: _saveProfile,
+            onCancel: _cancelEdit,
+          ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
             sliver: SliverList(
               delegate: SliverChildListDelegate(
                 [
-                  _ProfileSummaryCard(user: user),
-                  const SizedBox(height: 20),
-                  const _HighlightsRow(),
-                  const SizedBox(height: 20),
-                  _SettingsSection(
-                    title: 'Account Controls',
-                    tiles: [
-                      _SettingsTileData(
-                        icon: Icons.person_outline,
-                        title: 'Profile details',
-                        subtitle: 'Update name, headline, and avatar',
-                        onTap: () {},
-                      ),
-                      _SettingsTileData(
-                        icon: Icons.shield_moon_outlined,
-                        title: 'Security center',
-                        subtitle: 'Sessions, devices, multi-factor auth',
-                        onTap: () {},
-                      ),
-                      _SettingsTileData(
-                        icon: Icons.notifications_outlined,
-                        title: 'Notifications',
-                        subtitle: 'Mentions, keywords, and digests',
-                        onTap: () {},
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  _SettingsSection(
-                    title: 'Workspace',
-                    tiles: [
-                      _SettingsTileData(
-                        icon: Icons.palette_outlined,
-                        title: 'Theme & appearance',
-                        subtitle: 'Light, dark, and accessibility options',
-                        onTap: () {},
-                      ),
-                      _SettingsTileData(
-                        icon: Icons.language_outlined,
-                        title: 'Language & locale',
-                        subtitle: 'Date formats, time zone, translations',
-                        onTap: () {},
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
                   _SupportPanel(onSignOut: () async {
                     final router = GoRouter.of(context);
                     await ref.read(authControllerProvider.notifier).signOut();
@@ -93,9 +212,31 @@ class ProfileScreen extends ConsumerWidget {
 }
 
 class _ProfileAppBar extends StatelessWidget {
-  const _ProfileAppBar({required this.user});
+  const _ProfileAppBar({
+    required this.user,
+    required this.isEditing,
+    required this.isSaving,
+    required this.isUploadingAvatar,
+    required this.tempAvatarUrl,
+    required this.nameController,
+    required this.onEditToggle,
+    required this.onPickAvatar,
+    required this.onSave,
+    required this.onCancel,
+    this.errorMessage,
+  });
 
   final UserProfile user;
+  final bool isEditing;
+  final bool isSaving;
+  final bool isUploadingAvatar;
+  final String? tempAvatarUrl;
+  final TextEditingController nameController;
+  final VoidCallback onEditToggle;
+  final VoidCallback onPickAvatar;
+  final VoidCallback onSave;
+  final VoidCallback onCancel;
+  final String? errorMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -106,12 +247,19 @@ class _ProfileAppBar extends StatelessWidget {
     return SliverAppBar(
       pinned: true,
       stretch: true,
-      expandedHeight: 260,
+      expandedHeight: isEditing ? 320 : 260,
       backgroundColor: Colors.transparent,
       leading: IconButton(
         icon: const Icon(Icons.chevron_left),
         onPressed: () => context.pop(),
       ),
+      actions: [
+        if (!isEditing)
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: onEditToggle,
+          ),
+      ],
       flexibleSpace: FlexibleSpaceBar(
         stretchModes: const [
           StretchMode.fadeTitle,
@@ -147,56 +295,130 @@ class _ProfileAppBar extends StatelessWidget {
             Positioned(
               left: 24,
               bottom: 32,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              right: 24,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  AppAvatar(
-                    imageUrl: user.avatarUrl,
-                    initials:
-                        user.displayName.isNotEmpty ? user.displayName[0] : '?',
-                    size: 82,
-                  ),
-                  const SizedBox(width: 20),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        user.displayName,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 22,
-                        ),
+                      Stack(
+                        children: [
+                          AppAvatar(
+                            imageUrl: tempAvatarUrl ?? user.avatarUrl,
+                            initials:
+                                user.displayName.isNotEmpty ? user.displayName[0] : '?',
+                            size: 82,
+                          ),
+                          if (isEditing)
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: GestureDetector(
+                                onTap: isUploadingAvatar || isSaving ? null : onPickAvatar,
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                  child: isUploadingAvatar
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.camera_alt,
+                                          size: 16,
+                                          color: Colors.white,
+                                        ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                      Text(
-                        user.phoneNumber,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.72),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.stars_rounded,
-                                size: 16, color: Colors.white),
-                            const SizedBox(width: 6),
+                            if (isEditing)
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: TextField(
+                                  controller: nameController,
+                                  enabled: !isSaving,
+                                  style: const TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 20,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
+                                    border: InputBorder.none,
+                                    hintText: 'Enter your name',
+                                  ),
+                                ),
+                              )
+                            else
+                              Text(
+                                user.displayName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 22,
+                                ),
+                              ),
+                            const SizedBox(height: 8),
                             Text(
-                              status,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
+                              user.phoneNumber,
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.72),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.stars_rounded,
+                                      size: 16, color: Colors.white),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      status,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -204,6 +426,58 @@ class _ProfileAppBar extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (isEditing) ...[
+                    const SizedBox(height: 16),
+                    if (errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          errorMessage!,
+                          style: const TextStyle(
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: isSaving ? null : onCancel,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(color: Colors.white),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: isSaving ? null : onSave,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: const Color(0xFF4E5FF8),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: isSaving
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Color(0xFF4E5FF8),
+                                      ),
+                                    ),
+                                  )
+                                : const Text('Save'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

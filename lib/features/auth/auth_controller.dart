@@ -14,15 +14,20 @@ class AuthController extends StateNotifier<AuthState> {
   final AuthRepository _repository;
 
   Future<void> _initialize() async {
+    print('[AuthController] Initializing...');
     final token = await _repository.readToken();
 
     if (token == null) {
+      print('[AuthController] No token found');
       state = AuthState.unauthenticated();
       return;
     }
 
+    print('[AuthController] Token found, fetching current user...');
+    
     try {
       final user = await _repository.currentUser();
+      print('[AuthController] User loaded: ${user.displayName}, avatar: ${user.avatarUrl}');
       state = AuthState.authenticated(user);
     } catch (error, stackTrace) {
       developer.log(
@@ -99,6 +104,32 @@ class AuthController extends StateNotifier<AuthState> {
 
   void updateUser(UserProfile profile) {
     state = state.copyWith(user: profile);
+  }
+
+  Future<bool> updateProfile({
+    String? displayName,
+    String? avatarUrl,
+  }) async {
+    if (state.user == null) {
+      return false;
+    }
+
+    try {
+      final updatedUser = await _repository.updateProfile(
+        displayName: displayName,
+        avatarUrl: avatarUrl,
+      );
+      state = state.copyWith(user: updatedUser);
+      return true;
+    } catch (error, stackTrace) {
+      developer.log(
+        'Profile update failed',
+        name: 'AuthController',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return false;
+    }
   }
 
   String _mapError(Object error) {
