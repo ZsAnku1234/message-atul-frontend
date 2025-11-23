@@ -12,6 +12,7 @@ import '../models/user.dart';
 import '../providers/app_providers.dart';
 import '../theme/color_tokens.dart';
 import '../theme/text_styles.dart';
+import '../utils/phone_masking.dart';
 import '../widgets/app_avatar.dart';
 import '../widgets/conversation_tile.dart';
 import '../widgets/primary_button.dart';
@@ -833,7 +834,7 @@ class _NewGroupSheetState extends ConsumerState<_NewGroupSheet> {
                                         : '?',
                                   ),
                                   title: Text(user.displayName),
-                                  subtitle: Text(user.phoneNumber),
+                                  subtitle: Text(maskPhoneNumber(user.phoneNumber)),
                                   trailing: Icon(
                                     isSelected
                                         ? Icons.check_circle
@@ -1041,7 +1042,7 @@ class _NewChatSheetState extends ConsumerState<_NewChatSheet> {
                                         : '?',
                                   ),
                                   title: Text(user.displayName),
-                                  subtitle: Text(user.phoneNumber),
+                                  subtitle: Text(maskPhoneNumber(user.phoneNumber)),
                                   trailing: isPending
                                       ? const SizedBox(
                                           height: 20,

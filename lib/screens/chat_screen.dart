@@ -14,6 +14,7 @@ import '../models/user.dart';
 import '../providers/app_providers.dart';
 import '../theme/color_tokens.dart';
 import '../utils/indian_time.dart';
+import '../utils/phone_masking.dart';
 import '../widgets/app_avatar.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/message_input_bar.dart';
@@ -831,7 +832,7 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
                                         : '?',
                                   ),
                                   title: Text(user.displayName),
-                                  subtitle: Text(user.phoneNumber),
+                                  subtitle: Text(maskPhoneNumber(user.phoneNumber)),
                                   trailing: const Icon(Icons.person_add_alt),
                                   onTap: () => _addPendingMember(user),
                                 );
