@@ -1,4 +1,6 @@
 import 'package:intl/intl.dart';
+
+import '../utils/indian_time.dart';
 import 'user.dart';
 
 class Message {
@@ -8,9 +10,9 @@ class Message {
     required this.sender,
     required this.body,
     required this.createdAt,
-    this.attachments = const [],
+    List<String> attachments = const [],
     this.isMine = false,
-  });
+  }) : attachments = _filterAttachmentUrls(attachments);
 
   final String id;
   final String conversationId;
@@ -20,7 +22,10 @@ class Message {
   final List<String> attachments;
   final bool isMine;
 
-  String get formattedTime => DateFormat('h:mm a').format(createdAt);
+  DateTime get createdAtIndian => createdAt.asIndianTime;
+
+  String get formattedTime => DateFormat('h:mm a').format(createdAtIndian);
+  String get formattedDate => DateFormat('MMMM d, yyyy').format(createdAtIndian);
 
   factory Message.fromJson(Map<String, dynamic> json) {
     final conversationField = json['conversationId'] ?? json['conversation'];
@@ -32,9 +37,7 @@ class Message {
       sender: UserProfile.fromJson(json['sender'] as Map<String, dynamic>),
       body: json['content'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
-      attachments: (json['attachments'] as List<dynamic>? ?? [])
-          .map((dynamic url) => url as String)
-          .toList(),
+      attachments: _filterAttachmentUrls(json['attachments']),
       isMine: json['isMine'] as bool? ?? false,
     );
   }
@@ -66,4 +69,33 @@ String? _coerceId(dynamic value) {
   }
   final converted = value.toString().trim();
   return converted.isEmpty ? null : converted;
+}
+
+List<String> _filterAttachmentUrls(dynamic raw) {
+  final values = <String>[];
+
+  if (raw is List) {
+    values.addAll(raw.whereType<String>());
+  } else if (raw is Iterable) {
+    for (final item in raw) {
+      if (item is String) {
+        values.add(item);
+      }
+    }
+  } else if (raw is String) {
+    values.add(raw);
+  }
+
+  return values
+      .map((url) => url.trim())
+      .where((url) => url.isNotEmpty && !_looksLikeScreenshot(url))
+      .toList();
+}
+
+bool _looksLikeScreenshot(String url) {
+  final lower = url.toLowerCase();
+  return lower.contains("screenshot") ||
+      lower.contains("screen%20shot") ||
+      lower.contains("screen-shot") ||
+      lower.contains("screen_shot");
 }

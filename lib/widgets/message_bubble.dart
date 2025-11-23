@@ -14,66 +14,105 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMine = message.isMine;
     final hasText = message.body.trim().isNotEmpty;
+    final radius = BorderRadius.only(
+      topLeft: const Radius.circular(22),
+      topRight: const Radius.circular(22),
+      bottomLeft: Radius.circular(isMine ? 22 : 8),
+      bottomRight: Radius.circular(isMine ? 8 : 22),
+    );
+    final gradient = isMine
+        ? AppColors.linearGradient
+        : const LinearGradient(
+            colors: [Color(0xFFFDFDFE), Color(0xFFEFF3FF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          );
+    final bubbleDecoration = BoxDecoration(
+      gradient: gradient,
+      borderRadius: radius,
+      border: Border.all(
+        color: isMine ? Colors.white.withOpacity(0.1) : const Color(0xFFD6DBF5),
+      ),
+      boxShadow: [
+        BoxShadow(
+          blurRadius: 24,
+          spreadRadius: 0,
+          color: isMine
+              ? const Color(0x3323358D)
+              : Colors.black.withOpacity(0.08),
+          offset: const Offset(0, 10),
+        ),
+      ],
+    );
+    final textColor = isMine ? Colors.white : const Color(0xFF0F172A);
+    final metaColor =
+        isMine ? Colors.white70 : const Color(0xFF4F5D7A);
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 320),
+        constraints: const BoxConstraints(maxWidth: 340),
         margin: EdgeInsets.only(
           left: isMine ? 60 : 12,
           right: isMine ? 12 : 60,
           top: 4,
           bottom: 4,
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isMine ? null : Colors.white,
-          gradient: isMine ? AppColors.linearGradient : null,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(20),
-            topRight: const Radius.circular(20),
-            bottomLeft: Radius.circular(isMine ? 20 : 6),
-            bottomRight: Radius.circular(isMine ? 6 : 20),
+        child: DecoratedBox(
+          decoration: bubbleDecoration,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Column(
+              crossAxisAlignment:
+                  isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (message.attachments.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.only(bottom: hasText ? 10 : 2),
+                    child: _AttachmentGrid(
+                      attachments: message.attachments,
+                      onTap: (url, kind) =>
+                          _handleAttachmentTap(context, url, kind),
+                    ),
+                  ),
+                if (hasText)
+                  Text(
+                    message.body,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 15.5,
+                      height: 1.5,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: isMine
+                      ? MainAxisAlignment.end
+                      : MainAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.schedule_rounded,
+                      size: 12,
+                      color: metaColor,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      message.formattedTime,
+                      style: TextStyle(
+                        color: metaColor,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          boxShadow: const [
-            BoxShadow(
-              blurRadius: 14,
-              offset: Offset(0, 6),
-              color: Color(0x14000000),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment:
-              isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (message.attachments.isNotEmpty)
-              Padding(
-                padding: EdgeInsets.only(bottom: hasText ? 8 : 0),
-                child: _AttachmentGrid(
-                  attachments: message.attachments,
-                  onTap: (url, kind) =>
-                      _handleAttachmentTap(context, url, kind),
-                ),
-              ),
-            if (hasText)
-              Text(
-                message.body,
-                style: TextStyle(
-                  color: isMine ? Colors.white : Colors.black87,
-                  fontSize: 15,
-                  height: 1.42,
-                ),
-              ),
-            const SizedBox(height: 6),
-            Text(
-              message.formattedTime,
-              style: TextStyle(
-                color: isMine ? Colors.white70 : Colors.grey.shade500,
-                fontSize: 11,
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -134,38 +173,57 @@ class _AttachmentGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: attachments.map((url) {
-        final kind = _detectKind(url);
-        return GestureDetector(
-          onTap: () => onTap(url, kind),
-          child: _AttachmentTile(url: url, kind: kind),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final spacing = 8.0;
+        final mediaWidth = (maxWidth - spacing) / 2;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: attachments.map((url) {
+            final kind = _detectKind(url);
+            final isDocument = kind == _AttachmentKind.other;
+            final width = isDocument ? maxWidth : mediaWidth;
+            final height = isDocument ? 72.0 : mediaWidth * 0.75;
+            return SizedBox(
+              width: width,
+              child: GestureDetector(
+                onTap: () => onTap(url, kind),
+                child: _AttachmentTile(
+                  url: url,
+                  kind: kind,
+                  height: height,
+                ),
+              ),
+            );
+          }).toList(),
         );
-      }).toList(),
+      },
     );
   }
 }
 
 class _AttachmentTile extends StatelessWidget {
-  const _AttachmentTile({required this.url, required this.kind});
+  const _AttachmentTile({
+    required this.url,
+    required this.kind,
+    required this.height,
+  });
 
   final String url;
   final _AttachmentKind kind;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
-    final size = kind == _AttachmentKind.other
-        ? const Size(180, 64)
-        : const Size(160, 160);
-
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(kind == _AttachmentKind.other ? 14 : 18),
       child: Container(
-        width: size.width,
-        height: size.height,
-        color: Colors.black12,
+        height: height,
+        decoration: const BoxDecoration(
+          color: Color(0xFFE9EEF5),
+        ),
         child: _buildContent(),
       ),
     );

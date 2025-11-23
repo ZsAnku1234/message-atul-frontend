@@ -14,6 +14,7 @@ class ConversationSummary {
     this.isPrivate = false,
     this.adminIds = const [],
     this.adminOnlyMessaging = false,
+    this.pendingJoinRequests = const [],
   });
 
   final String id;
@@ -27,6 +28,7 @@ class ConversationSummary {
   final bool isPrivate;
   final List<String> adminIds;
   final bool adminOnlyMessaging;
+  final List<UserProfile> pendingJoinRequests;
 
   String get displayTitle {
     if (title != null && title!.trim().isNotEmpty) {
@@ -50,6 +52,12 @@ class ConversationSummary {
         json['lastMessageAt'] as String? ??
         json['updatedAt'] as String?;
 
+    final pendingRequests = (json['pendingJoinRequests'] as List<dynamic>? ?? [])
+        .whereType<Map<dynamic, dynamic>>()
+        .map((requester) =>
+            UserProfile.fromJson(Map<String, dynamic>.from(requester)))
+        .toList();
+
     return ConversationSummary(
       id: id,
       title: json['title'] as String?,
@@ -72,6 +80,7 @@ class ConversationSummary {
           .whereType<String>()
           .toList(),
       adminOnlyMessaging: json['adminOnlyMessaging'] as bool? ?? false,
+      pendingJoinRequests: pendingRequests,
     );
   }
 
@@ -84,6 +93,7 @@ class ConversationSummary {
     bool? isPrivate,
     List<String>? adminIds,
     bool? adminOnlyMessaging,
+    List<UserProfile>? pendingJoinRequests,
   }) {
     return ConversationSummary(
       id: id,
@@ -97,6 +107,7 @@ class ConversationSummary {
       isPrivate: isPrivate ?? this.isPrivate,
       adminIds: adminIds ?? this.adminIds,
       adminOnlyMessaging: adminOnlyMessaging ?? this.adminOnlyMessaging,
+      pendingJoinRequests: pendingJoinRequests ?? this.pendingJoinRequests,
     );
   }
 

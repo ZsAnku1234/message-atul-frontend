@@ -152,4 +152,75 @@ class ChatRepository {
       '/conversations/$conversationId/participants/$participantId',
     );
   }
+
+  Future<ConversationSummary> updateConversation({
+    required String conversationId,
+    String? title,
+    bool? isPrivate,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (title != null && title.trim().isNotEmpty) {
+      payload['title'] = title.trim();
+    }
+    if (isPrivate != null) {
+      payload['isPrivate'] = isPrivate;
+    }
+    if (payload.isEmpty) {
+      throw ArgumentError('Provide at least one field to update.');
+    }
+
+    final response = await _dio.patch<Map<String, dynamic>>(
+      '/conversations/$conversationId',
+      data: payload,
+    );
+
+    return ChatMapper.mapConversation(
+      Map<String, dynamic>.from(response.data!['conversation'] as Map),
+    );
+  }
+
+  Future<ConversationSummary> respondToJoinRequest({
+    required String conversationId,
+    required String applicantId,
+    required bool approve,
+  }) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/conversations/$conversationId/join-requests/$applicantId',
+      data: {'action': approve ? 'approve' : 'reject'},
+    );
+
+    return ChatMapper.mapConversation(
+      Map<String, dynamic>.from(response.data!['conversation'] as Map),
+    );
+  }
+
+  Future<ConversationSummary?> requestToJoinGroup(String conversationId) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/conversations/$conversationId/join',
+    );
+    final data = response.data ?? {};
+    if (data['status'] == 'joined' && data['conversation'] is Map) {
+      return ChatMapper.mapConversation(
+        Map<String, dynamic>.from(data['conversation'] as Map),
+      );
+    }
+    return null;
+  }
+
+  Future<List<ConversationSummary>> searchGroups(String query) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/conversations/search',
+      queryParameters: {'q': query},
+    );
+    final items = response.data?['conversations'];
+    if (items is List) {
+      return items
+          .map(
+            (dynamic item) =>
+                ChatMapper.mapConversation(Map<String, dynamic>.from(item as Map)),
+          )
+          .toList();
+    }
+    return [];
+  }
 }

@@ -272,6 +272,62 @@ class ChatController extends StateNotifier<ChatState> {
     }
   }
 
+  Future<void> updateGroupPrivacy({
+    required String conversationId,
+    required bool isPrivate,
+  }) async {
+    try {
+      final conversation = await _repository.updateConversation(
+        conversationId: conversationId,
+        isPrivate: isPrivate,
+      );
+      _upsertConversation(conversation);
+    } catch (error) {
+      state = state.copyWith(errorMessage: _mapError(error));
+      rethrow;
+    }
+  }
+
+  Future<void> respondToJoinRequest({
+    required String conversationId,
+    required String applicantId,
+    required bool approve,
+  }) async {
+    try {
+      final conversation = await _repository.respondToJoinRequest(
+        conversationId: conversationId,
+        applicantId: applicantId,
+        approve: approve,
+      );
+      _upsertConversation(conversation);
+    } catch (error) {
+      state = state.copyWith(errorMessage: _mapError(error));
+      rethrow;
+    }
+  }
+
+  Future<ConversationSummary?> requestToJoinGroup(String conversationId) async {
+    try {
+      final conversation = await _repository.requestToJoinGroup(conversationId);
+      if (conversation != null) {
+        _upsertConversation(conversation);
+      }
+      return conversation;
+    } catch (error) {
+      state = state.copyWith(errorMessage: _mapError(error));
+      rethrow;
+    }
+  }
+
+  Future<List<ConversationSummary>> searchJoinableGroups(String query) async {
+    try {
+      return await _repository.searchGroups(query);
+    } catch (error) {
+      state = state.copyWith(errorMessage: _mapError(error));
+      rethrow;
+    }
+  }
+
   Future<void> _handleAuthenticated(AuthState authState) async {
     if (!authState.isAuthenticated) {
       return;

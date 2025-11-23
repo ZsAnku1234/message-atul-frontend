@@ -28,10 +28,16 @@ class _ConversationListScreenState
     extends ConsumerState<ConversationListScreen> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  Timer? _groupSearchDebounce;
+  bool _isSearchingGroups = false;
+  String? _groupSearchError;
+  List<ConversationSummary> _joinableGroups = [];
+  final Set<String> _joiningGroupIds = {};
 
   @override
   void dispose() {
     _searchController.dispose();
+    _groupSearchDebounce?.cancel();
     super.dispose();
   }
 
@@ -153,6 +159,52 @@ class _ConversationListScreenState
     setState(() {
       _searchQuery = value;
     });
+    _scheduleGroupSearch(value);
+  }
+
+  void _scheduleGroupSearch(String rawQuery) {
+    _groupSearchDebounce?.cancel();
+    final trimmed = rawQuery.trim();
+
+    if (trimmed.length < 2) {
+      if (_joinableGroups.isEmpty && _groupSearchError == null && !_isSearchingGroups) {
+        return;
+      }
+      setState(() {
+        _joinableGroups = [];
+        _groupSearchError = null;
+        _isSearchingGroups = false;
+      });
+      return;
+    }
+
+    _groupSearchDebounce = Timer(const Duration(milliseconds: 400), () async {
+      setState(() {
+        _isSearchingGroups = true;
+        _groupSearchError = null;
+      });
+
+      try {
+        final results = await ref
+            .read(chatControllerProvider.notifier)
+            .searchJoinableGroups(trimmed);
+        if (!mounted) return;
+        setState(() {
+          _joinableGroups = results;
+          _isSearchingGroups = false;
+        });
+      } catch (error) {
+        if (!mounted) return;
+        var message = 'Unable to search groups right now.';
+        if (error is DioException && error.message != null) {
+          message = error.message!;
+        }
+        setState(() {
+          _groupSearchError = message;
+          _isSearchingGroups = false;
+        });
+      }
+    });
   }
 
   Future<void> _handleQuickChat(UserProfile participant) async {
@@ -187,6 +239,115 @@ class _ConversationListScreenState
       }
     }
     return null;
+  }
+
+  Widget _buildGroupSearchResults() {
+    if (_isSearchingGroups) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_groupSearchError != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          _groupSearchError!,
+          style: const TextStyle(color: AppColors.danger),
+        ),
+      );
+    }
+
+    if (_joinableGroups.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'No groups found for "${_searchQuery.trim()}".',
+          style: TextStyle(color: Colors.grey.shade600),
+        ),
+      );
+    }
+
+    return Column(
+      children: _joinableGroups
+          .map(
+            (conversation) => Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ListTile(
+                leading: AppAvatar(
+                  imageUrl: conversation.participants.isNotEmpty
+                      ? conversation.participants.first.avatarUrl
+                      : null,
+                  initials: conversation.displayTitle.isNotEmpty
+                      ? conversation.displayTitle[0]
+                      : '?',
+                ),
+                title: Text(conversation.displayTitle),
+                subtitle: Text(
+                  conversation.isPrivate ? 'Private group' : 'Public group',
+                  style: TextStyle(
+                    color: conversation.isPrivate
+                        ? Colors.orange.shade700
+                        : Colors.green.shade700,
+                  ),
+                ),
+                trailing: ElevatedButton(
+                  onPressed: _joiningGroupIds.contains(conversation.id)
+                      ? null
+                      : () => _handleJoinGroup(conversation),
+                  child: Text(conversation.isPrivate ? 'Request' : 'Join'),
+                ),
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Future<void> _handleJoinGroup(ConversationSummary conversation) async {
+    if (_joiningGroupIds.contains(conversation.id)) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    setState(() {
+      _joiningGroupIds.add(conversation.id);
+    });
+
+    try {
+      final joinedConversation = await ref
+          .read(chatControllerProvider.notifier)
+          .requestToJoinGroup(conversation.id);
+      if (!mounted) return;
+      String message;
+      if (joinedConversation != null) {
+        message = 'Joined ${joinedConversation.displayTitle}.';
+        await ref
+            .read(chatControllerProvider.notifier)
+            .selectConversation(joinedConversation.id);
+        context.push('/conversations/${joinedConversation.id}');
+      } else {
+        message = conversation.isPrivate
+            ? 'Request sent to group admins.'
+            : 'Join request sent.';
+      }
+      messenger?.showSnackBar(SnackBar(content: Text(message)));
+      setState(() {
+        _joinableGroups =
+            _joinableGroups.where((item) => item.id != conversation.id).toList();
+      });
+    } catch (error) {
+      var message = 'Unable to join this group right now.';
+      if (error is DioException && error.message != null) {
+        message = error.message!;
+      }
+      messenger?.showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _joiningGroupIds.remove(conversation.id);
+      });
+    }
   }
 
   @override
@@ -279,7 +440,15 @@ class _ConversationListScreenState
                               ),
                       ),
                     ),
-                    if (!isSearching && highlightList.isNotEmpty) ...[
+                    if (isSearching) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        'Discover groups',
+                        style: AppTextStyles.lightTextTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildGroupSearchResults(),
+                    ] else if (highlightList.isNotEmpty) ...[
                       const SizedBox(height: 24),
                       SizedBox(
                         height: 110,

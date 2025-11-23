@@ -11,6 +11,11 @@ class ChatMapper {
         .map((dynamic participant) =>
             UserProfile.fromJson(_normalizeUser(participant)))
         .toList();
+    final pendingRequests = (json['pendingJoinRequests'] as List<dynamic>? ?? [])
+        .where((requester) => requester is Map || requester is UserProfile)
+        .map((dynamic requester) =>
+            UserProfile.fromJson(_normalizeUser(requester)))
+        .toList();
 
     final lastMessage = json['lastMessage'] != null
         ? mapMessage(Map<String, dynamic>.from(
@@ -46,6 +51,7 @@ class ChatMapper {
           .where((id) => id.isNotEmpty)
           .toList(),
       adminOnlyMessaging: json['adminOnlyMessaging'] as bool? ?? false,
+      pendingJoinRequests: pendingRequests,
     );
   }
 

@@ -13,6 +13,7 @@ import '../models/message.dart';
 import '../models/user.dart';
 import '../providers/app_providers.dart';
 import '../theme/color_tokens.dart';
+import '../utils/indian_time.dart';
 import '../widgets/app_avatar.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/message_input_bar.dart';
@@ -328,9 +329,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     DateTime? lastDate;
 
     for (final message in messages) {
-      final messageDate = DateUtils.dateOnly(message.createdAt);
+      final createdAtIndian = message.createdAtIndian;
+      final messageDate = DateUtils.dateOnly(createdAtIndian);
       if (lastDate == null || !DateUtils.isSameDay(lastDate, messageDate)) {
-        items.add(_MessageListItem.header(_formatDateLabel(message.createdAt)));
+        items.add(_MessageListItem.header(_formatDateLabel(createdAtIndian)));
         lastDate = messageDate;
       }
       items.add(_MessageListItem.message(message));
@@ -339,15 +341,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return items;
   }
 
-  String _formatDateLabel(DateTime date) {
-    final now = DateTime.now();
-    if (DateUtils.isSameDay(now, date)) {
+  String _formatDateLabel(DateTime dateInIndia) {
+    final now = indianNow();
+    if (DateUtils.isSameDay(now, dateInIndia)) {
       return 'Today';
     }
-    if (DateUtils.isSameDay(now.subtract(const Duration(days: 1)), date)) {
+    if (DateUtils.isSameDay(now.subtract(const Duration(days: 1)), dateInIndia)) {
       return 'Yesterday';
     }
-    return DateFormat('MMMM d, yyyy').format(date);
+    return DateFormat('MMMM d, yyyy').format(dateInIndia);
   }
 }
 
@@ -420,10 +422,13 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
   late final Set<String> _initialAdmins;
   late Set<String> _admins;
   late bool _adminOnly;
+  late bool _isPrivate;
   late final Set<String> _existingParticipantIds;
+  late List<UserProfile> _pendingRequests;
   final _memberSearchController = TextEditingController();
   final _memberResults = <UserProfile>[];
   final Map<String, UserProfile> _pendingMembers = {};
+  final Set<String> _processingRequests = {};
   Timer? _memberDebounce;
   bool _isSearchingMembers = false;
   bool _isSaving = false;
@@ -438,6 +443,8 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
     };
     _admins = {..._initialAdmins};
     _adminOnly = widget.conversation.adminOnlyMessaging;
+    _isPrivate = widget.conversation.isPrivate;
+    _pendingRequests = List<UserProfile>.from(widget.conversation.pendingJoinRequests);
     _existingParticipantIds =
         widget.conversation.participants.map((user) => user.id).toSet();
   }
@@ -451,6 +458,9 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
 
   bool get _hasChanges {
     if (_adminOnly != widget.conversation.adminOnlyMessaging) {
+      return true;
+    }
+    if (_isPrivate != widget.conversation.isPrivate) {
       return true;
     }
     if (_admins.length != _initialAdmins.length) {
@@ -547,6 +557,72 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
     });
   }
 
+  Future<void> _openDirectChat(UserProfile user) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    try {
+      final conversation =
+          await ref.read(chatControllerProvider.notifier).startConversationWith(
+                user.id,
+              );
+      await ref
+          .read(chatControllerProvider.notifier)
+          .selectConversation(conversation.id);
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop();
+      context.push('/conversations/${conversation.id}');
+    } catch (error) {
+      var message = 'Unable to start a chat right now.';
+      if (error is DioException && error.message != null) {
+        message = error.message!;
+      }
+      messenger?.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _handleJoinDecision(UserProfile user, bool approve) async {
+    if (_processingRequests.contains(user.id)) {
+      return;
+    }
+
+    setState(() {
+      _processingRequests.add(user.id);
+      _errorMessage = null;
+    });
+
+    try {
+      await ref.read(chatControllerProvider.notifier).respondToJoinRequest(
+            conversationId: widget.conversation.id,
+            applicantId: user.id,
+            approve: approve,
+          );
+      if (!mounted) return;
+      setState(() {
+        _pendingRequests.removeWhere((pending) => pending.id == user.id);
+      });
+    } catch (error) {
+      var message = 'Unable to update the join request. Please try again.';
+      if (error is DioException) {
+        message = error.response?.data is Map &&
+                (error.response!.data as Map)['message'] is String
+            ? (error.response!.data as Map)['message'] as String
+            : error.message ?? message;
+      } else if (error is Exception) {
+        message = error.toString().replaceFirst('Exception: ', '');
+      }
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = message;
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _processingRequests.remove(user.id);
+      });
+    }
+  }
+
   Future<void> _save() async {
     if (_isSaving || !_hasChanges) {
       Navigator.of(context).pop();
@@ -561,6 +637,7 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
         .toList();
     final adminOnlyChanged =
         _adminOnly != widget.conversation.adminOnlyMessaging;
+    final privacyChanged = _isPrivate != widget.conversation.isPrivate;
 
     setState(() {
       _isSaving = true;
@@ -585,6 +662,18 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
             removeAdminIds: removes,
             adminOnlyMessaging: adminOnlyChanged ? _adminOnly : null,
           );
+
+      if (privacyChanged) {
+        await ref.read(chatControllerProvider.notifier).updateGroupPrivacy(
+              conversationId: widget.conversation.id,
+              isPrivate: _isPrivate,
+            );
+        if (!_isPrivate && mounted) {
+          setState(() {
+            _pendingRequests.clear();
+          });
+        }
+      }
       if (!mounted) return;
       Navigator.of(context).pop();
     } catch (error) {
@@ -637,6 +726,28 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
               ],
             ),
             const SizedBox(height: 12),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Private group'),
+              subtitle: const Text('Requires approval before new members can join.'),
+              value: _isPrivate,
+              onChanged: _isSaving
+                  ? null
+                  : (value) => setState(() {
+                        _isPrivate = value;
+                        _errorMessage = null;
+                      }),
+            ),
+            if (_isPrivate) ...[
+              const SizedBox(height: 8),
+              _PendingRequestList(
+                requests: _pendingRequests,
+                processing: _processingRequests,
+                onAction: _handleJoinDecision,
+                onProfileTap: _openDirectChat,
+              ),
+              const SizedBox(height: 12),
+            ],
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: const Text('Admins only mode'),
@@ -772,6 +883,79 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+typedef _JoinDecisionHandler = Future<void> Function(UserProfile profile, bool approve);
+
+class _PendingRequestList extends StatelessWidget {
+  const _PendingRequestList({
+    required this.requests,
+    required this.processing,
+    required this.onAction,
+    required this.onProfileTap,
+  });
+
+  final List<UserProfile> requests;
+  final Set<String> processing;
+  final _JoinDecisionHandler onAction;
+  final void Function(UserProfile user) onProfileTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (requests.isEmpty) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          'No pending join requests.',
+          style: TextStyle(color: Colors.grey.shade600),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Pending join requests',
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        ...requests.map((user) {
+          final isBusy = processing.contains(user.id);
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              onTap: () => onProfileTap(user),
+              leading: AppAvatar(
+                imageUrl: user.avatarUrl,
+                initials: user.displayName.isNotEmpty
+                    ? user.displayName[0]
+                    : '?',
+              ),
+              title: Text(user.displayName),
+              subtitle: Text(user.phoneNumber),
+              trailing: Wrap(
+                spacing: 8,
+                children: [
+                  OutlinedButton(
+                    onPressed: isBusy ? null : () => onAction(user, false),
+                    child: const Text('Reject'),
+                  ),
+                  ElevatedButton(
+                    onPressed: isBusy ? null : () => onAction(user, true),
+                    child: const Text('Approve'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
     );
   }
 }

@@ -22,8 +22,9 @@ class ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final lastMessage = conversation.lastMessage;
     final subtitle = _buildSubtitle(lastMessage);
-    final time =
-        lastMessage != null ? _timeFormat.format(lastMessage.createdAt) : '';
+    final time = lastMessage != null
+        ? _timeFormat.format(lastMessage.createdAtIndian)
+        : '';
     final primaryParticipant =
         conversation.participantForDisplay(currentUserId);
     final displayTitle = conversation.titleFor(currentUserId);

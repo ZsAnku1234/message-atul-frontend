@@ -112,6 +112,12 @@ class SocketService {
         _emitEvent(ChatSocketConversationAdded(conversation));
       }
     });
+    socket.on('conversation:joined', (dynamic payload) {
+      final conversation = _safeMapConversation(payload);
+      if (conversation != null) {
+        _emitEvent(ChatSocketConversationAdded(conversation));
+      }
+    });
 
     socket.on('conversation:removed', (dynamic payload) {
       final data = _asMap(payload);
