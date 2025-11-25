@@ -317,7 +317,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           );
                         }
                         
-                        final item = messageItems[messageItems.length - 1 - index];
+                        final item = messageItems[index];
                         if (item.isHeader) {
                           return _DateDivider(label: item.label!);
                         }

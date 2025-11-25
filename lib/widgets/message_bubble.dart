@@ -127,11 +127,21 @@ class MessageBubble extends StatelessWidget {
     final messenger = ScaffoldMessenger.maybeOf(context);
 
     if (kind == _AttachmentKind.image) {
+      // Collect all image URLs from attachments
+      final imageUrls = message.attachments
+          .where((attachment) => _detectKind(attachment) == _AttachmentKind.image)
+          .toList();
+      
+      // Find the index of the tapped image
+      final initialIndex = imageUrls.indexOf(url);
+      
       await navigator.push(
         MaterialPageRoute<void>(
           builder: (_) => MediaViewerScreen(
             url: url,
             type: MediaViewerType.image,
+            imageUrls: imageUrls.length > 1 ? imageUrls : null,
+            initialIndex: initialIndex >= 0 ? initialIndex : 0,
           ),
         ),
       );

@@ -416,6 +416,7 @@ class _ProfileAppBar extends StatelessWidget {
                                         fontWeight: FontWeight.w500,
                                       ),
                                       overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
                                     ),
                                   ),
                                 ],
@@ -925,9 +926,10 @@ class _SupportPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          Row(
+          Column(
             children: [
-              Expanded(
+              SizedBox(
+                width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: () {},
                   icon: const Icon(Icons.chat_bubble_outline),
@@ -939,8 +941,9 @@ class _SupportPanel extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
-              Expanded(
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
                 child: PrimaryButton(
                   label: 'Sign out',
                   icon: Icons.logout,

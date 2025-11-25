@@ -8,10 +8,14 @@ class MediaViewerScreen extends StatefulWidget {
     super.key,
     required this.url,
     required this.type,
+    this.imageUrls,
+    this.initialIndex = 0,
   });
 
   final String url;
   final MediaViewerType type;
+  final List<String>? imageUrls;
+  final int initialIndex;
 
   @override
   State<MediaViewerScreen> createState() => _MediaViewerScreenState();
@@ -20,10 +24,14 @@ class MediaViewerScreen extends StatefulWidget {
 class _MediaViewerScreenState extends State<MediaViewerScreen> {
   VideoPlayerController? _videoController;
   bool _videoError = false;
+  late PageController _pageController;
+  late int _currentPage;
 
   @override
   void initState() {
     super.initState();
+    _currentPage = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
     if (widget.type == MediaViewerType.video) {
       _initializeVideo();
     }
@@ -59,33 +67,57 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   @override
   void dispose() {
     _videoController?.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final isGalleryMode = widget.imageUrls != null && widget.imageUrls!.length > 1;
+    
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
+        title: isGalleryMode
+            ? Text(
+                '${_currentPage + 1} / ${widget.imageUrls!.length}',
+                style: const TextStyle(fontSize: 16),
+              )
+            : null,
       ),
       body: Center(
         child: widget.type == MediaViewerType.image
-            ? _buildImage()
+            ? (isGalleryMode ? _buildImageGallery() : _buildImage(widget.url))
             : _buildVideo(),
       ),
     );
   }
 
-  Widget _buildImage() {
+  Widget _buildImageGallery() {
+    return PageView.builder(
+      controller: _pageController,
+      onPageChanged: (index) {
+        setState(() {
+          _currentPage = index;
+        });
+      },
+      itemCount: widget.imageUrls!.length,
+      itemBuilder: (context, index) {
+        return _buildImage(widget.imageUrls![index]);
+      },
+    );
+  }
+
+  Widget _buildImage(String url) {
     return InteractiveViewer(
       boundaryMargin: const EdgeInsets.all(20),
       minScale: 0.5,
       maxScale: 4,
       child: Image.network(
-        widget.url,
+        url,
         fit: BoxFit.contain,
         errorBuilder: (_, __, ___) => const Text(
           'Unable to load image',
