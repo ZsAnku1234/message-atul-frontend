@@ -72,9 +72,16 @@ class ChatController extends StateNotifier<ChatState> {
     final previousId = state.activeConversation?.id;
 
     try {
+      // Use pagination endpoint for messages
+      final page = await _repository.fetchMessages(
+        conversationId: conversationId,
+        limit: 30, // Initial load
+      );
+      
+      // Still need conversation details
       final result = await _repository.fetchConversationDetail(conversationId);
       final conversation = result.$1;
-      final messages = _decorateMessages(result.$2);
+      final messages = _decorateMessages(page.messages);
       final normalizedConversation = conversation.copyWith(unreadCount: 0);
       final updatedList = _sortConversations([
         ...state.conversations
@@ -86,6 +93,8 @@ class ChatController extends StateNotifier<ChatState> {
         conversations: updatedList,
         activeConversation: normalizedConversation,
         messages: messages,
+        hasMoreMessages: page.hasMore,
+        messagesCursor: page.nextCursor,
         isLoading: false,
         clearError: true,
       );
@@ -93,6 +102,44 @@ class ChatController extends StateNotifier<ChatState> {
     } catch (error) {
       state = state.copyWith(
         isLoading: false,
+        errorMessage: _mapError(error),
+      );
+    }
+  }
+
+  Future<void> loadMoreMessages() async {
+    if (state.isLoadingMore || !state.hasMoreMessages) {
+      return;
+    }
+
+    final conversationId = state.activeConversation?.id;
+    if (conversationId == null) {
+      return;
+    }
+
+    state = state.copyWith(isLoadingMore: true);
+
+    try {
+      final page = await _repository.fetchMessages(
+        conversationId: conversationId,
+        before: state.messagesCursor,
+        limit: 50,
+      );
+
+      final decoratedMessages = _decorateMessages(page.messages);
+      
+      // Prepend older messages (they come in reverse chronological order)
+      final allMessages = [...decoratedMessages, ...state.messages];
+
+      state = state.copyWith(
+        messages: allMessages,
+        hasMoreMessages: page.hasMore,
+        messagesCursor: page.nextCursor,
+        isLoadingMore: false,
+      );
+    } catch (error) {
+      state = state.copyWith(
+        isLoadingMore: false,
         errorMessage: _mapError(error),
       );
     }

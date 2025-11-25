@@ -36,6 +36,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     Future.microtask(
       () => ref
           .read(chatControllerProvider.notifier)
@@ -57,8 +58,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    // Load more when scrolling near the top (older messages)
+    if (_scrollController.position.pixels <= 100) {
+      _loadMoreIfNeeded();
+    }
+  }
+
+  Future<void> _loadMoreIfNeeded() async {
+    final chatState = ref.read(chatControllerProvider);
+    if (!chatState.isLoadingMore && chatState.hasMoreMessages) {
+      await ref.read(chatControllerProvider.notifier).loadMoreMessages();
+    }
   }
 
   Future<void> _send(String text, List<String> attachments) async {
@@ -282,13 +298,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : ListView.builder(
                       controller: _scrollController,
+                      reverse: true,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 16,
                       ),
-                      itemCount: messageItems.length,
+                      itemCount: messageItems.length + (chatState.hasMoreMessages ? 1 : 0),
                       itemBuilder: (context, index) {
-                        final item = messageItems[index];
+                        // Loading indicator at the end (top when reversed)
+                        if (index == messageItems.length) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: chatState.isLoadingMore
+                                  ? const CircularProgressIndicator()
+                                  : const SizedBox.shrink(),
+                            ),
+                          );
+                        }
+                        
+                        final item = messageItems[messageItems.length - 1 - index];
                         if (item.isHeader) {
                           return _DateDivider(label: item.label!);
                         }
@@ -705,183 +734,185 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
     final theme = Theme.of(context);
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Group settings',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                IconButton(
-                  onPressed:
-                      _isSaving ? null : () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Private group'),
-              subtitle: const Text('Requires approval before new members can join.'),
-              value: _isPrivate,
-              onChanged: _isSaving
-                  ? null
-                  : (value) => setState(() {
-                        _isPrivate = value;
-                        _errorMessage = null;
-                      }),
-            ),
-            if (_isPrivate) ...[
-              const SizedBox(height: 8),
-              _PendingRequestList(
-                requests: _pendingRequests,
-                processing: _processingRequests,
-                onAction: _handleJoinDecision,
-                onProfileTap: _openDirectChat,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Group settings',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  IconButton(
+                    onPressed:
+                        _isSaving ? null : () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
-            ],
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Admins only mode'),
-              subtitle: const Text(
-                  'When enabled, only admins can send or edit messages.'),
-              value: _adminOnly,
-              onChanged: _isSaving
-                  ? null
-                  : (value) => setState(() {
-                        _adminOnly = value;
-                        _errorMessage = null;
-                      }),
-            ),
-            if (_errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  _errorMessage!,
-                  style: const TextStyle(color: AppColors.danger),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Private group'),
+                subtitle: const Text('Requires approval before new members can join.'),
+                value: _isPrivate,
+                onChanged: _isSaving
+                    ? null
+                    : (value) => setState(() {
+                          _isPrivate = value;
+                          _errorMessage = null;
+                        }),
+              ),
+              if (_isPrivate) ...[
+                const SizedBox(height: 8),
+                _PendingRequestList(
+                  requests: _pendingRequests,
+                  processing: _processingRequests,
+                  onAction: _handleJoinDecision,
+                  onProfileTap: _openDirectChat,
                 ),
+                const SizedBox(height: 12),
+              ],
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Admins only mode'),
+                subtitle: const Text(
+                    'When enabled, only admins can send or edit messages.'),
+                value: _adminOnly,
+                onChanged: _isSaving
+                    ? null
+                    : (value) => setState(() {
+                          _adminOnly = value;
+                          _errorMessage = null;
+                        }),
               ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _memberSearchController,
-              textInputAction: TextInputAction.search,
-              decoration: const InputDecoration(
-                hintText: 'Search people to add',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: _onMemberQueryChanged,
-            ),
-            if (_pendingMembers.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _pendingMembers.values
-                      .map(
-                        (user) => InputChip(
-                          avatar: CircleAvatar(
-                            child: Text(
-                              user.displayName.isNotEmpty
-                                  ? user.displayName[0]
-                                  : '?',
-                            ),
-                          ),
-                          label: Text(user.displayName),
-                          onDeleted: () => _removePendingMember(user.id),
-                        ),
-                      )
-                      .toList(),
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    _errorMessage!,
+                    style: const TextStyle(color: AppColors.danger),
+                  ),
                 ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _memberSearchController,
+                textInputAction: TextInputAction.search,
+                decoration: const InputDecoration(
+                  hintText: 'Search people to add',
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: _onMemberQueryChanged,
               ),
-            SizedBox(
-              height: 160,
-              child: _memberSearchController.text.trim().length < 2 &&
-                      _memberResults.isEmpty
-                  ? const SizedBox.shrink()
-                  : _isSearchingMembers
-                      ? const Center(child: CircularProgressIndicator())
-                      : _memberResults.isEmpty
-                          ? Center(
+              if (_pendingMembers.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _pendingMembers.values
+                        .map(
+                          (user) => InputChip(
+                            avatar: CircleAvatar(
                               child: Text(
-                                'No users found. Try a different name or number.',
-                                style: TextStyle(color: Colors.grey.shade600),
-                                textAlign: TextAlign.center,
+                                user.displayName.isNotEmpty
+                                    ? user.displayName[0]
+                                    : '?',
                               ),
-                            )
-                          : ListView.separated(
-                              itemCount: _memberResults.length,
-                              separatorBuilder: (_, __) =>
-                                  const Divider(height: 0),
-                              itemBuilder: (context, index) {
-                                final user = _memberResults[index];
-                                return ListTile(
-                                  leading: AppAvatar(
-                                    imageUrl: user.avatarUrl,
-                                    initials: user.displayName.isNotEmpty
-                                        ? user.displayName[0]
-                                        : '?',
-                                  ),
-                                  title: Text(user.displayName),
-                                  subtitle: Text(maskPhoneNumber(user.phoneNumber)),
-                                  trailing: const Icon(Icons.person_add_alt),
-                                  onTap: () => _addPendingMember(user),
-                                );
-                              },
                             ),
-            ),
-            const Divider(height: 24),
-            SizedBox(
-              height: 280,
-              child: ListView.separated(
-                itemCount: widget.conversation.participants.length,
-                separatorBuilder: (_, __) => const Divider(height: 0),
-                itemBuilder: (context, index) {
-                  final user = widget.conversation.participants[index];
-                  final isCreator = user.id == widget.conversation.createdBy;
-                  final isAdmin = _admins.contains(user.id);
-                  final labels = <String>[];
-                  labels.add(user.phoneNumber);
-                  if (user.id == widget.currentUserId) {
-                    labels.add('You');
-                  }
-                  if (isCreator) {
-                    labels.add('Creator');
-                  }
-
-                  return SwitchListTile.adaptive(
-                    secondary: AppAvatar(
-                      imageUrl: user.avatarUrl,
-                      initials: user.displayName.isNotEmpty
-                          ? user.displayName[0]
-                          : '?',
-                    ),
-                    title: Text(user.displayName),
-                    subtitle: Text(labels.join(' • ')),
-                    value: isAdmin,
-                    onChanged: (isCreator || _isSaving)
-                        ? null
-                        : (value) => _toggleAdmin(user.id, value),
-                  );
-                },
+                            label: Text(user.displayName),
+                            onDeleted: () => _removePendingMember(user.id),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              SizedBox(
+                height: 160,
+                child: _memberSearchController.text.trim().length < 2 &&
+                        _memberResults.isEmpty
+                    ? const SizedBox.shrink()
+                    : _isSearchingMembers
+                        ? const Center(child: CircularProgressIndicator())
+                        : _memberResults.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'No users found. Try a different name or number.',
+                                  style: TextStyle(color: Colors.grey.shade600),
+                                  textAlign: TextAlign.center,
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: _memberResults.length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 0),
+                                itemBuilder: (context, index) {
+                                  final user = _memberResults[index];
+                                  return ListTile(
+                                    leading: AppAvatar(
+                                      imageUrl: user.avatarUrl,
+                                      initials: user.displayName.isNotEmpty
+                                          ? user.displayName[0]
+                                          : '?',
+                                    ),
+                                    title: Text(user.displayName),
+                                    subtitle: Text(maskPhoneNumber(user.phoneNumber)),
+                                    trailing: const Icon(Icons.person_add_alt),
+                                    onTap: () => _addPendingMember(user),
+                                  );
+                                },
+                              ),
               ),
-            ),
-            const SizedBox(height: 16),
-            PrimaryButton(
-              label: 'Save changes',
-              onPressed: (!_hasChanges || _isSaving) ? null : _save,
-              isLoading: _isSaving,
-            ),
-          ],
+              const Divider(height: 24),
+              SizedBox(
+                height: 280,
+                child: ListView.separated(
+                  itemCount: widget.conversation.participants.length,
+                  separatorBuilder: (_, __) => const Divider(height: 0),
+                  itemBuilder: (context, index) {
+                    final user = widget.conversation.participants[index];
+                    final isCreator = user.id == widget.conversation.createdBy;
+                    final isAdmin = _admins.contains(user.id);
+                    final labels = <String>[];
+                    labels.add(user.phoneNumber);
+                    if (user.id == widget.currentUserId) {
+                      labels.add('You');
+                    }
+                    if (isCreator) {
+                      labels.add('Creator');
+                    }
+
+                    return SwitchListTile.adaptive(
+                      secondary: AppAvatar(
+                        imageUrl: user.avatarUrl,
+                        initials: user.displayName.isNotEmpty
+                            ? user.displayName[0]
+                            : '?',
+                      ),
+                      title: Text(user.displayName),
+                      subtitle: Text(labels.join(' • ')),
+                      value: isAdmin,
+                      onChanged: (isCreator || _isSaving)
+                          ? null
+                          : (value) => _toggleAdmin(user.id, value),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              PrimaryButton(
+                label: 'Save changes',
+                onPressed: (!_hasChanges || _isSaving) ? null : _save,
+                isLoading: _isSaving,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -930,26 +961,64 @@ class _PendingRequestList extends StatelessWidget {
           final isBusy = processing.contains(user.id);
           return Card(
             margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              onTap: () => onProfileTap(user),
-              leading: AppAvatar(
-                imageUrl: user.avatarUrl,
-                initials: user.displayName.isNotEmpty
-                    ? user.displayName[0]
-                    : '?',
-              ),
-              title: Text(user.displayName),
-              subtitle: Text(user.phoneNumber),
-              trailing: Wrap(
-                spacing: 8,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  OutlinedButton(
-                    onPressed: isBusy ? null : () => onAction(user, false),
-                    child: const Text('Reject'),
+                  InkWell(
+                    onTap: () => onProfileTap(user),
+                    child: Row(
+                      children: [
+                        AppAvatar(
+                          imageUrl: user.avatarUrl,
+                          initials: user.displayName.isNotEmpty
+                              ? user.displayName[0]
+                              : '?',
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                user.displayName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                maskPhoneNumber(user.phoneNumber),
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  ElevatedButton(
-                    onPressed: isBusy ? null : () => onAction(user, true),
-                    child: const Text('Approve'),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: isBusy ? null : () => onAction(user, false),
+                          child: const Text('Reject'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: isBusy ? null : () => onAction(user, true),
+                          child: const Text('Approve'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

@@ -223,4 +223,42 @@ class ChatRepository {
     }
     return [];
   }
+
+  Future<MessagePage> fetchMessages({
+    required String conversationId,
+    String? before,
+    int limit = 50,
+  }) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/messages/conversations/$conversationId/messages',
+      queryParameters: {
+        if (before != null) 'before': before,
+        'limit': limit.toString(),
+      },
+    );
+
+    final data = response.data!;
+    final messages = (data['messages'] as List<dynamic>)
+        .map((dynamic json) =>
+            ChatMapper.mapMessage(Map<String, dynamic>.from(json as Map)))
+        .toList();
+
+    return MessagePage(
+      messages: messages,
+      hasMore: data['hasMore'] as bool,
+      nextCursor: data['nextCursor'] as String?,
+    );
+  }
+}
+
+class MessagePage {
+  const MessagePage({
+    required this.messages,
+    required this.hasMore,
+    this.nextCursor,
+  });
+
+  final List<Message> messages;
+  final bool hasMore;
+  final String? nextCursor;
 }

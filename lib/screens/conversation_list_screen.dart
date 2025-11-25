@@ -716,12 +716,13 @@ class _NewGroupSheetState extends ConsumerState<_NewGroupSheet> {
     final theme = Theme.of(context);
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -857,6 +858,7 @@ class _NewGroupSheetState extends ConsumerState<_NewGroupSheet> {
           ],
         ),
       ),
+      ),
     );
   }
 }
@@ -966,12 +968,13 @@ class _NewChatSheetState extends ConsumerState<_NewChatSheet> {
     final theme = Theme.of(context);
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -1062,6 +1065,7 @@ class _NewChatSheetState extends ConsumerState<_NewChatSheet> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
