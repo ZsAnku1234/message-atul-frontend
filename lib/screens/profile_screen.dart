@@ -1,8 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:dio/dio.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../features/auth/auth_controller.dart';
 import '../models/user.dart';
@@ -10,7 +12,6 @@ import '../providers/app_providers.dart';
 import '../theme/color_tokens.dart';
 import '../widgets/app_avatar.dart';
 import '../widgets/primary_button.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -146,6 +147,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     });
   }
 
+  Future<void> _openSupportEmail() async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: 'abc@gmail.com',
+    );
+    final launched = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched && mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text('Unable to open your mail app right now.'),
+        ),
+      );
+    }
+  }
+
   void _cancelEdit() {
     final user = ref.read(authControllerProvider).user;
     setState(() {
@@ -197,12 +216,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             sliver: SliverList(
               delegate: SliverChildListDelegate(
                 [
-
-                  _SupportPanel(onSignOut: () async {
+                  _SupportPanel(
+                    onOpenSupport: _openSupportEmail,
+                    onSignOut: () async {
                     final router = GoRouter.of(context);
                     await ref.read(authControllerProvider.notifier).signOut();
                     router.go('/auth');
-                  }),
+                    },
+                  ),
                 ],
               ),
             ),
@@ -510,8 +531,12 @@ class _ProfileAppBar extends StatelessWidget {
 
 
 class _SupportPanel extends StatelessWidget {
-  const _SupportPanel({required this.onSignOut});
+  const _SupportPanel({
+    required this.onOpenSupport,
+    required this.onSignOut,
+  });
 
+  final VoidCallback onOpenSupport;
   final Future<void> Function() onSignOut;
 
   @override
@@ -583,7 +608,7 @@ class _SupportPanel extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: onOpenSupport,
                   icon: const Icon(Icons.chat_bubble_outline),
                   label: const Text('Open support chat'),
                   style: OutlinedButton.styleFrom(
