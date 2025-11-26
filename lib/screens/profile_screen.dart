@@ -10,6 +10,7 @@ import '../providers/app_providers.dart';
 import '../theme/color_tokens.dart';
 import '../widgets/app_avatar.dart';
 import '../widgets/primary_button.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -93,7 +94,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         }
       }
       
-      print('Avatar upload error: $error');
+      // debugPrint('Avatar upload error: $error');
       
       setState(() {
         _isUploadingAvatar = false;
@@ -116,21 +117,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _errorMessage = null;
     });
 
-    print('Saving profile with avatarUrl: $_tempAvatarUrl');
+    // debugPrint('Saving profile with avatarUrl: $_tempAvatarUrl');
     
     final success = await ref.read(authControllerProvider.notifier).updateProfile(
           displayName: newName,
           avatarUrl: _tempAvatarUrl,
         );
 
-    print('Profile save result: $success');
+    // debugPrint('Profile save result: $success');
     
     if (!mounted) return;
 
     if (success) {
       // Get the updated user to verify
-      final updatedUser = ref.read(authControllerProvider).user;
-      print('Updated user avatar: ${updatedUser?.avatarUrl}');
+      // final updatedUser = ref.read(authControllerProvider).user;
+      // debugPrint('Updated user avatar: ${updatedUser?.avatarUrl}');
     }
 
     setState(() {
@@ -196,6 +197,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             sliver: SliverList(
               delegate: SliverChildListDelegate(
                 [
+
                   _SupportPanel(onSignOut: () async {
                     final router = GoRouter.of(context);
                     await ref.read(authControllerProvider.notifier).signOut();
@@ -247,8 +249,16 @@ class _ProfileAppBar extends StatelessWidget {
     return SliverAppBar(
       pinned: true,
       stretch: true,
-      expandedHeight: isEditing ? 320 : 260,
+      expandedHeight: isEditing ? 320 : 200,
       backgroundColor: Colors.transparent,
+      title: Text(
+        'Account',
+        style: GoogleFonts.inter(
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+        ),
+      ),
+      centerTitle: false,
       leading: IconButton(
         icon: const Icon(Icons.chevron_left),
         onPressed: () => context.pop(),
@@ -267,7 +277,6 @@ class _ProfileAppBar extends StatelessWidget {
         ],
         centerTitle: false,
         titlePadding: const EdgeInsetsDirectional.only(start: 24, bottom: 16),
-        title: const Text('Account'),
         background: Stack(
           fit: StackFit.expand,
           children: [
@@ -317,13 +326,20 @@ class _ProfileAppBar extends StatelessWidget {
                               right: 0,
                               child: GestureDetector(
                                 onTap: isUploadingAvatar || isSaving ? null : onPickAvatar,
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 2),
-                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 2),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.2),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
                                   child: isUploadingAvatar
                                       ? const SizedBox(
                                           width: 16,
@@ -378,7 +394,7 @@ class _ProfileAppBar extends StatelessWidget {
                             else
                               Text(
                                 user.displayName,
-                                style: const TextStyle(
+                                style: GoogleFonts.inter(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w700,
                                   fontSize: 22,
@@ -489,376 +505,9 @@ class _ProfileAppBar extends StatelessWidget {
   }
 }
 
-class _ProfileSummaryCard extends StatelessWidget {
-  const _ProfileSummaryCard({required this.user});
 
-  final UserProfile user;
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
-          BoxShadow(
-            blurRadius: 38,
-            offset: Offset(0, 20),
-            color: Color(0x12000000),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              _SummaryMetric(
-                label: 'Teams',
-                value: '03',
-                icon: Icons.group_outlined,
-              ),
-              const SizedBox(width: 16),
-              _SummaryMetric(
-                label: 'Active devices',
-                value: '4',
-                icon: Icons.devices_other_outlined,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.verified_user, color: AppColors.primary),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'Account status',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                            SizedBox(height: 6),
-                            Text(
-                              'Verified • MFA enabled',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Personal workspace',
-            style: theme.textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Manage your profile settings, security posture, and workspace preferences from a single dashboard.',
-            style: theme.textTheme.bodyMedium,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryMetric extends StatelessWidget {
-  const _SummaryMetric({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final baseColor = theme.brightness == Brightness.dark
-        ? AppColors.surfaceDark
-        : Colors.white;
-
-    return Container(
-      width: 120,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: baseColor,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(
-            blurRadius: 20,
-            offset: Offset(0, 12),
-            color: Color(0x0F4E5FF8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: AppColors.primary),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: theme.brightness == Brightness.dark
-                  ? Colors.white70
-                  : Colors.grey.shade600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HighlightsRow extends StatelessWidget {
-  const _HighlightsRow();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 130,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: const [
-          _HighlightCard(
-            title: 'Profile completion',
-            statistic: '92%',
-            accentColor: AppColors.primary,
-            subtitle: 'Finish uploading a cover image',
-            icon: Icons.track_changes_outlined,
-          ),
-          SizedBox(width: 16),
-          _HighlightCard(
-            title: 'Inbox uptime',
-            statistic: '99.9%',
-            accentColor: AppColors.success,
-            subtitle: 'No incidents detected this week',
-            icon: Icons.auto_graph_outlined,
-          ),
-          SizedBox(width: 16),
-          _HighlightCard(
-            title: 'Data export',
-            statistic: 'Available',
-            accentColor: AppColors.warning,
-            subtitle: 'Schedule a compliance export',
-            icon: Icons.cloud_download_outlined,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HighlightCard extends StatelessWidget {
-  const _HighlightCard({
-    required this.title,
-    required this.statistic,
-    required this.accentColor,
-    required this.subtitle,
-    required this.icon,
-  });
-
-  final String title;
-  final String statistic;
-  final Color accentColor;
-  final String subtitle;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final baseColor = theme.brightness == Brightness.dark
-        ? AppColors.surfaceDark
-        : Colors.white;
-
-    return Container(
-      width: 230,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: baseColor,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            blurRadius: 20,
-            offset: Offset(0, 12),
-            color: Color(0x0F4E5FF8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 34,
-            width: 34,
-            decoration: BoxDecoration(
-              color: accentColor.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: accentColor, size: 18),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            title,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            statistic,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 18,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 12,
-              color: theme.brightness == Brightness.dark
-                  ? Colors.white70
-                  : Colors.grey.shade600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsSection extends StatelessWidget {
-  const _SettingsSection({required this.title, required this.tiles});
-
-  final String title;
-  final List<_SettingsTileData> tiles;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: theme.textTheme.titleMedium
-              ?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 14),
-        Container(
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(
-                blurRadius: 24,
-                offset: Offset(0, 14),
-                color: Color(0x11000000),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              for (var i = 0; i < tiles.length; i++) ...[
-                _SettingsTile(data: tiles[i]),
-                if (i != tiles.length - 1)
-                  Divider(
-                    height: 1,
-                    color: Colors.grey.shade200,
-                    indent: 68,
-                  ),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SettingsTileData {
-  const _SettingsTileData({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-}
-
-class _SettingsTile extends StatelessWidget {
-  const _SettingsTile({required this.data});
-
-  final _SettingsTileData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      leading: Container(
-        height: 46,
-        width: 46,
-        decoration: BoxDecoration(
-          gradient: AppColors.subtleGradient,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Icon(data.icon, color: AppColors.primary),
-      ),
-      title: Text(
-        data.title,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        data.subtitle,
-        style: TextStyle(color: Colors.grey.shade600),
-      ),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: data.onTap,
-    );
-  }
-}
 
 class _SupportPanel extends StatelessWidget {
   const _SupportPanel({required this.onSignOut});
@@ -878,11 +527,11 @@ class _SupportPanel extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(22),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
             blurRadius: 30,
-            offset: Offset(0, 18),
-            color: Color(0x12000000),
+            offset: const Offset(0, 18),
+            color: Colors.black.withOpacity(0.05),
           ),
         ],
       ),
@@ -891,8 +540,11 @@ class _SupportPanel extends StatelessWidget {
         children: [
           Text(
             'Support & trust',
-            style: theme.textTheme.titleMedium
-                ?.copyWith(fontWeight: FontWeight.w700),
+            style: GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: theme.textTheme.titleMedium?.color,
+            ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -911,13 +563,13 @@ class _SupportPanel extends StatelessWidget {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
                       'Need guidance?',
-                      style: TextStyle(fontWeight: FontWeight.w600),
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w600),
                     ),
-                    SizedBox(height: 6),
-                    Text(
+                    const SizedBox(height: 6),
+                    const Text(
                       'Our success engineers respond within the same business day for workspace admins.',
                     ),
                   ],

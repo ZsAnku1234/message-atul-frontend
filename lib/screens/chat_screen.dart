@@ -298,15 +298,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : ListView.builder(
                       controller: _scrollController,
-                      reverse: true,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 16,
                       ),
-                      itemCount: messageItems.length + (chatState.hasMoreMessages ? 1 : 0),
+                      itemCount: messageItems.length +
+                          (chatState.hasMoreMessages ? 1 : 0),
                       itemBuilder: (context, index) {
-                        // Loading indicator at the end (top when reversed)
-                        if (index == messageItems.length) {
+                        final hasHistoryLoader = chatState.hasMoreMessages;
+                        if (hasHistoryLoader && index == 0) {
+                          // Show pagination loader at the top (oldest side)
                           return Center(
                             child: Padding(
                               padding: const EdgeInsets.all(16),
@@ -316,8 +317,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             ),
                           );
                         }
-                        
-                        final item = messageItems[index];
+
+                        final messageIndex =
+                            hasHistoryLoader ? index - 1 : index;
+                        final item = messageItems[messageIndex];
                         if (item.isHeader) {
                           return _DateDivider(label: item.label!);
                         }

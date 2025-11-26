@@ -32,6 +32,7 @@ class MessageBubble extends StatelessWidget {
       borderRadius: radius,
       border: Border.all(
         color: isMine ? Colors.white.withOpacity(0.1) : const Color(0xFFD6DBF5),
+        width: (!hasText && message.attachments.isNotEmpty) ? 0.5 : 1.0,
       ),
       boxShadow: [
         BoxShadow(
@@ -61,7 +62,9 @@ class MessageBubble extends StatelessWidget {
         child: DecoratedBox(
           decoration: bubbleDecoration,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: (!hasText && message.attachments.isNotEmpty)
+                ? const EdgeInsets.all(4)
+                : const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Column(
               crossAxisAlignment:
                   isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,

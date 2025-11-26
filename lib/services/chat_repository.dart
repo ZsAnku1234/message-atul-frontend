@@ -241,6 +241,8 @@ class ChatRepository {
     final messages = (data['messages'] as List<dynamic>)
         .map((dynamic json) =>
             ChatMapper.mapMessage(Map<String, dynamic>.from(json as Map)))
+        .toList()
+        .reversed
         .toList();
 
     return MessagePage(
