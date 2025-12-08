@@ -37,13 +37,18 @@ class AuthRepository {
   final Dio _dio;
   final FlutterSecureStorage _storage;
 
+  // Request OTP for signup or password reset
   Future<OtpRequestResult> requestOtp({
     required String phoneNumber,
+    String? purpose, // 'signup' or 'reset'
   }) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/auth/request-otp',
-        data: {'phoneNumber': phoneNumber},
+        data: {
+          'phoneNumber': phoneNumber,
+          if (purpose != null) 'purpose': purpose,
+        },
       );
 
       final data = response.data!;
@@ -60,18 +65,55 @@ class AuthRepository {
     }
   }
 
-  Future<AuthPayload> verifyOtp({
+  // Signup with OTP verification + password
+  Future<AuthPayload> signup({
     required String phoneNumber,
     required String code,
-    String? displayName,
+    required String displayName,
+    required String password,
   }) async {
     final request = <String, dynamic>{
       'phoneNumber': phoneNumber,
       'code': code,
+      'displayName': displayName.trim(),
+      'password': password,
     };
-    if (displayName != null && displayName.trim().isNotEmpty) {
-      request['displayName'] = displayName.trim();
+
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/auth/signup',
+        data: request,
+      );
+
+      final data = response.data!;
+      final authPayload = AuthPayload(
+        user: UserProfile.fromJson(data['user'] as Map<String, dynamic>),
+        token: data['token'] as String,
+      );
+      await _persistUser(authPayload.user);
+      return authPayload;
+    } on DioException catch (error) {
+      if (_isDemoAuthEnabled(error)) {
+        final fallback = _buildDemoPayload(
+          phoneNumber: phoneNumber,
+          displayName: displayName,
+        );
+        await _persistUser(fallback.user);
+        return fallback;
+      }
+      rethrow;
     }
+  }
+
+  // Login with password
+  Future<AuthPayload> loginWithPassword({
+    required String phoneNumber,
+    required String password,
+  }) async {
+    final request = <String, dynamic>{
+      'phoneNumber': phoneNumber,
+      'password': password,
+    };
 
     try {
       final response = await _dio.post<Map<String, dynamic>>(
@@ -90,7 +132,69 @@ class AuthRepository {
       if (_isDemoAuthEnabled(error)) {
         final fallback = _buildDemoPayload(
           phoneNumber: phoneNumber,
-          displayName: displayName,
+          displayName: 'Demo User',
+        );
+        await _persistUser(fallback.user);
+        return fallback;
+      }
+      rethrow;
+    }
+  }
+
+  // Forgot password - request OTP
+  Future<OtpRequestResult> forgotPassword({
+    required String phoneNumber,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/auth/forgot-password',
+        data: {'phoneNumber': phoneNumber},
+      );
+
+      final data = response.data!;
+      return OtpRequestResult(
+        phoneNumber: data['phoneNumber'] as String,
+        expiresAt: DateTime.parse(data['expiresAt'] as String),
+        code: data['code'] as String?,
+      );
+    } on DioException catch (error) {
+      if (_isDemoAuthEnabled(error)) {
+        return _buildDemoOtpResult(phoneNumber: phoneNumber);
+      }
+      rethrow;
+    }
+  }
+
+  // Reset password with OTP
+  Future<AuthPayload> resetPassword({
+    required String phoneNumber,
+    required String code,
+    required String newPassword,
+  }) async {
+    final request = <String, dynamic>{
+      'phoneNumber': phoneNumber,
+      'code': code,
+      'newPassword': newPassword,
+    };
+
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/auth/reset-password',
+        data: request,
+      );
+
+      final data = response.data!;
+      final authPayload = AuthPayload(
+        user: UserProfile.fromJson(data['user'] as Map<String, dynamic>),
+        token: data['token'] as String,
+      );
+      await _persistUser(authPayload.user);
+      return authPayload;
+    } on DioException catch (error) {
+      if (_isDemoAuthEnabled(error)) {
+        final fallback = _buildDemoPayload(
+          phoneNumber: phoneNumber,
+          displayName: 'Demo User',
         );
         await _persistUser(fallback.user);
         return fallback;

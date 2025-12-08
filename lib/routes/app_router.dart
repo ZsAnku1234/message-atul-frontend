@@ -7,6 +7,8 @@ import '../features/auth/auth_state.dart';
 import '../screens/chat_screen.dart';
 import '../screens/conversation_list_screen.dart';
 import '../screens/login_screen.dart';
+import '../screens/signup_screen.dart';
+import '../screens/forgot_password_screen.dart';
 import '../screens/profile_screen.dart';
 
 class RouterNotifier extends ChangeNotifier {
@@ -47,13 +49,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: notifier,
     redirect: (context, state) {
       final isLoggedIn = notifier.isAuthenticated;
-      final goingToAuth = state.matchedLocation == '/auth';
+      final isAuthRoute = state.matchedLocation.startsWith('/auth') ||
+          state.matchedLocation.startsWith('/signup') ||
+          state.matchedLocation.startsWith('/forgot-password');
 
       if (!isLoggedIn) {
-        return goingToAuth ? null : '/auth';
+        return isAuthRoute ? null : '/auth';
       }
 
-      if (isLoggedIn && goingToAuth) {
+      if (isLoggedIn && isAuthRoute) {
         return '/conversations';
       }
 
@@ -64,6 +68,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/auth',
         name: 'auth',
         builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/signup',
+        name: 'signup',
+        builder: (context, state) => const SignupScreen(),
+      ),
+      GoRoute(
+        path: '/forgot-password',
+        name: 'forgot-password',
+        builder: (context, state) => const ForgotPasswordScreen(),
       ),
       GoRoute(
         path: '/conversations',

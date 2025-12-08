@@ -1,4 +1,5 @@
 import 'dart:developer' as developer;
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/user.dart';
 import '../../services/auth_repository.dart';
@@ -41,11 +42,15 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  Future<OtpRequestResult?> requestOtp(String phoneNumber) async {
+  // Request OTP for signup or password reset
+  Future<OtpRequestResult?> requestOtp(String phoneNumber, {String? purpose}) async {
     state = state.copyWith(status: AuthStatus.authenticating, clearError: true);
 
     try {
-      final result = await _repository.requestOtp(phoneNumber: phoneNumber);
+      final result = await _repository.requestOtp(
+        phoneNumber: phoneNumber,
+        purpose: purpose,
+      );
       state = state.copyWith(status: AuthStatus.unauthenticated);
       return result;
     } catch (error, stackTrace) {
@@ -63,25 +68,113 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  Future<bool> verifyOtp({
+  // Signup with OTP + password
+  Future<bool> signup({
     required String phoneNumber,
     required String code,
-    String? displayName,
+    required String displayName,
+    required String password,
   }) async {
     state = state.copyWith(status: AuthStatus.authenticating, clearError: true);
 
     try {
-      final payload = await _repository.verifyOtp(
+      final payload = await _repository.signup(
         phoneNumber: phoneNumber,
         code: code,
         displayName: displayName,
+        password: password,
       );
       await _repository.persistToken(payload.token);
       state = AuthState.authenticated(payload.user);
       return true;
     } catch (error, stackTrace) {
       developer.log(
-        'OTP verification failed',
+        'Signup failed',
+        name: 'AuthController',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      state = state.copyWith(
+        status: AuthStatus.unauthenticated,
+        errorMessage: _mapError(error),
+      );
+      return false;
+    }
+  }
+
+  // Login with password
+  Future<bool> loginWithPassword({
+    required String phoneNumber,
+    required String password,
+  }) async {
+    state = state.copyWith(status: AuthStatus.authenticating, clearError: true);
+
+    try {
+      final payload = await _repository.loginWithPassword(
+        phoneNumber: phoneNumber,
+        password: password,
+      );
+      await _repository.persistToken(payload.token);
+      state = AuthState.authenticated(payload.user);
+      return true;
+    } catch (error, stackTrace) {
+      developer.log(
+        'Login failed',
+        name: 'AuthController',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      state = state.copyWith(
+        status: AuthStatus.unauthenticated,
+        errorMessage: _mapError(error),
+      );
+      return false;
+    }
+  }
+
+  // Forgot password - request OTP
+  Future<OtpRequestResult?> forgotPassword(String phoneNumber) async {
+    state = state.copyWith(status: AuthStatus.authenticating, clearError: true);
+
+    try {
+      final result = await _repository.forgotPassword(phoneNumber: phoneNumber);
+      state = state.copyWith(status: AuthStatus.unauthenticated);
+      return result;
+    } catch (error, stackTrace) {
+      developer.log(
+        'Forgot password request failed',
+        name: 'AuthController',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      state = state.copyWith(
+        status: AuthStatus.unauthenticated,
+        errorMessage: _mapError(error),
+      );
+      return null;
+    }
+  }
+
+  // Reset password with OTP
+  Future<bool> resetPassword({
+    required String phoneNumber,
+    required String code,
+    required String newPassword,
+  }) async {
+    state = state.copyWith(status: AuthStatus.authenticating, clearError: true);
+
+    try {
+      final payload = await _repository.resetPassword(
+        phoneNumber: phoneNumber,
+        code: code,
+        newPassword: newPassword,
+      );
+      await _repository.persistToken(payload.token);
+      state = AuthState.authenticated(payload.user);
+      return true;
+    } catch (error, stackTrace) {
+      developer.log(
+        'Password reset failed',
         name: 'AuthController',
         error: error,
         stackTrace: stackTrace,
@@ -133,6 +226,21 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   String _mapError(Object error) {
+    // Extract error message from DioException
+    if (error is DioException) {
+      final response = error.response;
+      if (response?.data is Map<String, dynamic>) {
+        final message = response!.data['message'];
+        if (message is String) {
+          return message;
+        }
+      }
+      // Fallback to error message
+      if (error.message != null) {
+        return error.message!;
+      }
+    }
+    
     if (error is Exception) {
       return error.toString().replaceFirst('Exception: ', '');
     }
