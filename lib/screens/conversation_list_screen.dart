@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 import '../features/auth/auth_controller.dart';
 import '../features/chat/chat_controller.dart';
@@ -34,6 +35,12 @@ class _ConversationListScreenState
   String? _groupSearchError;
   List<ConversationSummary> _joinableGroups = [];
   final Set<String> _joiningGroupIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    FlutterNativeSplash.remove();
+  }
 
   @override
   void dispose() {
@@ -537,11 +544,31 @@ class _ConversationListScreenState
                           conversation: conversation,
                           currentUserId: currentUserId,
                           onTap: () async {
-                            await ref
-                                .read(chatControllerProvider.notifier)
-                                .selectConversation(conversation.id);
-                            if (!mounted) return;
-                            context.push('/conversations/${conversation.id}');
+                            
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (context) => const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                            
+                            try {
+                              await ref
+                                  .read(chatControllerProvider.notifier)
+                                  .selectConversation(conversation.id);
+                              if (!mounted) return;
+                              // Pop the loader
+                              Navigator.of(context).pop();
+                              context.push('/conversations/${conversation.id}');
+                            } catch (e) {
+                              if (!mounted) return;
+                              // Pop the loader on error
+                              Navigator.of(context).pop();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to load chat: $e')),
+                              );
+                            }
                           },
                         ),
                         if (index != conversations.length - 1)

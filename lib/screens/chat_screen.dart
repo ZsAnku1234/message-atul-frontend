@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
@@ -42,6 +43,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .read(chatControllerProvider.notifier)
           .selectConversation(widget.conversationId),
     );
+    Future.microtask(() async {
+      try {
+        const platform = MethodChannel('com.nuttgram.app/security');
+        await platform.invokeMethod('setSecureMode', {'secure': true});
+      } catch (_) {
+        // Platform channels may fail on other platforms or old Android versions
+      }
+    });
   }
 
   @override
@@ -60,6 +69,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    Future.microtask(() async {
+      try {
+        const platform = MethodChannel('com.nuttgram.app/security');
+        await platform.invokeMethod('setSecureMode', {'secure': false});
+      } catch (_) {
+        // Ignore errors during disposal
+      }
+    });
     super.dispose();
   }
 
