@@ -10,6 +10,7 @@ import '../screens/login_screen.dart';
 import '../screens/signup_screen.dart';
 import '../screens/forgot_password_screen.dart';
 import '../screens/profile_screen.dart';
+import '../screens/join_group_screen.dart';
 
 class RouterNotifier extends ChangeNotifier {
   RouterNotifier(this.ref) {
@@ -97,6 +98,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/profile',
         name: 'profile',
         builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/join',
+        name: 'join',
+        builder: (context, state) {
+          final token = state.uri.queryParameters['token'];
+          return JoinGroupScreen(token: token);
+        },
       ),
     ],
   );

@@ -220,13 +220,29 @@ class _ConversationListScreenState
     final existing = _findDirectConversation(participant.id);
     final controller = ref.read(chatControllerProvider.notifier);
 
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
     try {
       final conversation = existing ??
           await controller.startConversationWith(participant.id);
       await controller.selectConversation(conversation.id);
+      
       if (!mounted) return;
+      // Pop the loader
+      Navigator.of(context).pop();
       context.push('/conversations/${conversation.id}');
     } catch (_) {
+      if (!mounted) return;
+      // Pop the loader on error
+      Navigator.of(context).pop();
+      
       messenger?.showSnackBar(
         const SnackBar(
           content: Text('Unable to open this chat. Please try again.'),

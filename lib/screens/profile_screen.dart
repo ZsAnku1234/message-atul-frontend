@@ -568,7 +568,7 @@ class _SupportPanel extends StatelessWidget {
             style: GoogleFonts.inter(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: theme.textTheme.titleMedium?.color,
+              color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 12),
@@ -591,11 +591,20 @@ class _SupportPanel extends StatelessWidget {
                   children: [
                     Text(
                       'Need guidance?',
-                      style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                      style: GoogleFonts.inter(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
+                    Text(
                       'Our success engineers respond within the same business day for workspace admins.',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                        height: 1.5,
+                      ),
                     ),
                   ],
                 ),

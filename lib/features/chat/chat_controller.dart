@@ -642,7 +642,31 @@ class ChatController extends StateNotifier<ChatState> {
 
     return 'Unable to process your request right now.';
   }
+  Future<String> generateInviteLink(String conversationId) async {
+    try {
+      return await _repository.fetchInviteLink(conversationId);
+    } catch (error) {
+      state = state.copyWith(errorMessage: _mapError(error));
+      rethrow;
+    }
+  }
+
+  Future<void> joinViaLink(String token) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final conversation = await _repository.joinViaLink(token);
+      _upsertConversation(conversation);
+      await selectConversation(conversation.id);
+    } catch (error) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: _mapError(error),
+      );
+      rethrow;
+    }
+  }
 }
+
 
 final chatControllerProvider =
     StateNotifierProvider<ChatController, ChatState>((ref) {

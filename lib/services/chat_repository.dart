@@ -251,7 +251,23 @@ class ChatRepository {
       nextCursor: data['nextCursor'] as String?,
     );
   }
+  Future<String> fetchInviteLink(String conversationId) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/conversations/$conversationId/invite-link',
+    );
+    return response.data!['link'] as String;
+  }
+
+  Future<ConversationSummary> joinViaLink(String token) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/conversations/join',
+      data: {'token': token},
+    );
+    return ChatMapper.mapConversation(
+        Map<String, dynamic>.from(response.data!['conversation'] as Map));
+  }
 }
+
 
 class MessagePage {
   const MessagePage({

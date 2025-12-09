@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../features/auth/auth_controller.dart';
 import '../features/chat/chat_controller.dart';
@@ -749,6 +750,20 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
     }
   }
 
+  Future<void> _shareInviteLink() async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    try {
+      final link = await ref
+          .read(chatControllerProvider.notifier)
+          .generateInviteLink(widget.conversation.id);
+      await Share.share('Join my group on Nuttgram: $link');
+    } catch (_) {
+      messenger?.showSnackBar(
+        const SnackBar(content: Text('Unable to share link')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -788,6 +803,12 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
                           _isPrivate = value;
                           _errorMessage = null;
                         }),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.share),
+                title: const Text('Share invite link'),
+                onTap: _shareInviteLink,
               ),
               if (_isPrivate) ...[
                 const SizedBox(height: 8),
