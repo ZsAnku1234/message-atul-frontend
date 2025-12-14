@@ -7,6 +7,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/app_providers.dart';
+import '../routes/app_router.dart';
+import '../features/auth/auth_controller.dart';
+import '../features/auth/auth_state.dart';
 
 final notificationServiceProvider = Provider((ref) => NotificationService(ref));
 
@@ -16,10 +19,20 @@ class NotificationService {
   bool _isInitialized = false;
   Completer<void>? _initializationCompleter;
   StreamSubscription<String>? _tokenRefreshSubscription;
+  Map<String, dynamic>? _pendingNotificationData;
 
   NotificationService(this._ref);
 
   Future<void> initialize() async {
+    // Listen for auth state changes to handle pending notifications
+    _ref.listen<AuthState>(authControllerProvider, (previous, next) {
+      if (next.isAuthenticated && _pendingNotificationData != null) {
+        print("User authenticated, processing pending notification...");
+        _handleNotificationTap(_pendingNotificationData!);
+        _pendingNotificationData = null;
+      }
+    });
+
     try {
       await _ensureFirebaseInitialized();
       await _registerToken();
@@ -77,13 +90,28 @@ class NotificationService {
       onDidReceiveNotificationResponse: (response) {
         // Handle notification tap
         print("Notification tapped: ${response.payload}");
-        // TODO: Navigate to chat
+        if (response.payload != null) {
+          try {
+            final data = jsonDecode(response.payload!) as Map<String, dynamic>;
+            _handleNotificationTap(data);
+          } catch (e) {
+            print("Error parsing notification payload: $e");
+          }
+        }
       },
     );
   }
 
   Future<void> _setupFCMListeners() async {
-    // Foreground messages
+    // 1. Terminated State: Check if the app was opened from a notification
+    FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
+      if (message != null) {
+        print('App launched from terminated state via notification');
+        _handleNotificationTap(message.data);
+      }
+    });
+
+    // 2. Foreground messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       print('Got a message whilst in the foreground!');
       print('Message data: ${message.data}');
@@ -94,10 +122,10 @@ class NotificationService {
       }
     });
 
-    // Background message tap
+    // 3. Background/Suspended State: App opened from notification
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       print('A new onMessageOpenedApp event was published!');
-      // Navigate to chat
+      _handleNotificationTap(message.data);
     });
 
     _tokenRefreshSubscription ??=
@@ -105,6 +133,35 @@ class NotificationService {
       print('FCM token refreshed. Syncing with backend...');
       await _registerToken(forceToken: token);
     });
+  }
+
+  void _handleNotificationTap(Map<String, dynamic> data) {
+    print("Handling notification tap with data: $data");
+
+    // Check if user is authenticated
+    final authState = _ref.read(authControllerProvider);
+    if (!authState.isAuthenticated) {
+      print("User not authenticated, storing notification data as pending.");
+      _pendingNotificationData = data;
+      return;
+    }
+
+    // Attempt to find conversationId or similar key
+    final conversationId = data['conversationId'] ?? data['chatId'] ?? data['conversation_id'];
+
+    if (conversationId != null) {
+      print("Navigating to conversation: $conversationId");
+      try {
+        _ref.read(appRouterProvider).pushNamed(
+          'conversation',
+          pathParameters: {'id': conversationId.toString()},
+        );
+      } catch (e) {
+        print("Navigation error: $e");
+      }
+    } else {
+      print("No conversationId found in notification payload");
+    }
   }
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
