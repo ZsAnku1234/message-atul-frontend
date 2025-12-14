@@ -34,7 +34,9 @@ class ConversationTile extends StatelessWidget {
     return ListTile(
       onTap: onTap,
       leading: AppAvatar(
-        imageUrl: primaryParticipant?.avatarUrl,
+        imageUrl: conversation.isGroup
+            ? conversation.avatarUrl
+            : primaryParticipant?.avatarUrl,
         initials: primaryParticipant != null
             ? (primaryParticipant.displayName.isNotEmpty
                 ? primaryParticipant.displayName[0]

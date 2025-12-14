@@ -22,9 +22,9 @@ class ChatMapper {
             json['lastMessage'] as Map<dynamic, dynamic>))
         : null;
 
-    final lastActivityString = json['lastMessageAt'] as String? ??
+    final lastActivityString = json['updatedAt'] as String? ??
+        json['lastMessageAt'] as String? ??
         json['lastActivity'] as String? ??
-        json['updatedAt'] as String? ??
         DateTime.now().toIso8601String();
 
     final createdBy = _extractId(json['createdBy']);
@@ -39,6 +39,7 @@ class ChatMapper {
     return ConversationSummary(
       id: id,
       title: title?.isNotEmpty == true ? title : null,
+      avatarUrl: json['avatarUrl'] as String?,
       participants: participants,
       lastMessage: lastMessage,
       lastActivity: DateTime.parse(lastActivityString),

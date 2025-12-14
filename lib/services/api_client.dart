@@ -1,5 +1,8 @@
 import 'package:dio/dio.dart';
 
+const _defaultConnectTimeout = Duration(seconds: 120);
+const _defaultTransferTimeout = Duration(minutes: 30);
+
 Dio createApiClient() {
   final dio = Dio(
     BaseOptions(
@@ -8,8 +11,9 @@ Dio createApiClient() {
         // defaultValue: 'http://localhost:3000/api',
         defaultValue: 'https://api.nuttgram.com/api',
       ),
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
+      connectTimeout: _defaultConnectTimeout,
+      receiveTimeout: _defaultTransferTimeout,
+      sendTimeout: _defaultTransferTimeout,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -18,8 +22,8 @@ Dio createApiClient() {
 
   dio.interceptors.add(
     LogInterceptor(
-      requestBody: true,
-      responseBody: true,
+      requestBody: false, // Prevent logging huge multipart payloads.
+      responseBody: false,
       requestHeader: false,
     ),
   );

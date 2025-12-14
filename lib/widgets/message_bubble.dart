@@ -1,25 +1,37 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/message.dart';
 import '../screens/media_viewer_screen.dart';
 import '../theme/color_tokens.dart';
 
 class MessageBubble extends StatelessWidget {
-  const MessageBubble({super.key, required this.message});
+  const MessageBubble({
+    super.key,
+    required this.message,
+    this.onAttachmentTap,
+  });
 
   final Message message;
+  final void Function(String url, _AttachmentKind kind)? onAttachmentTap;
 
   @override
   Widget build(BuildContext context) {
     final isMine = message.isMine;
     final hasText = message.body.trim().isNotEmpty;
-    final radius = BorderRadius.only(
-      topLeft: const Radius.circular(22),
-      topRight: const Radius.circular(22),
-      bottomLeft: Radius.circular(isMine ? 22 : 8),
-      bottomRight: Radius.circular(isMine ? 8 : 22),
-    );
+    final isMediaOnly = !hasText && message.attachments.isNotEmpty;
+    
+    final radius = isMediaOnly 
+      ? BorderRadius.circular(4) 
+      : BorderRadius.only(
+          topLeft: const Radius.circular(22),
+          topRight: const Radius.circular(22),
+          bottomLeft: Radius.circular(isMine ? 22 : 8),
+          bottomRight: Radius.circular(isMine ? 8 : 22),
+        );
     final gradient = isMine
         ? AppColors.linearGradient
         : const LinearGradient(
@@ -75,8 +87,7 @@ class MessageBubble extends StatelessWidget {
                     padding: EdgeInsets.only(bottom: hasText ? 10 : 2),
                     child: _AttachmentGrid(
                       attachments: message.attachments,
-                      onTap: (url, kind) =>
-                          _handleAttachmentTap(context, url, kind),
+                      onTap: (url, kind) => onAttachmentTap?.call(url, kind),
                     ),
                   ),
                 if (hasText)
@@ -98,8 +109,8 @@ class MessageBubble extends StatelessWidget {
                       : MainAxisAlignment.start,
                   children: [
                     Icon(
-                      Icons.schedule_rounded,
-                      size: 12,
+                      Icons.done_all_rounded,
+                      size: 16,
                       color: metaColor,
                     ),
                     const SizedBox(width: 4),
@@ -118,59 +129,6 @@ class MessageBubble extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  Future<void> _handleAttachmentTap(
-    BuildContext context,
-    String url,
-    _AttachmentKind kind,
-  ) async {
-    final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.maybeOf(context);
-
-    if (kind == _AttachmentKind.image) {
-      // Collect all image URLs from attachments
-      final imageUrls = message.attachments
-          .where((attachment) => _detectKind(attachment) == _AttachmentKind.image)
-          .toList();
-      
-      // Find the index of the tapped image
-      final initialIndex = imageUrls.indexOf(url);
-      
-      await navigator.push(
-        MaterialPageRoute<void>(
-          builder: (_) => MediaViewerScreen(
-            url: url,
-            type: MediaViewerType.image,
-            imageUrls: imageUrls.length > 1 ? imageUrls : null,
-            initialIndex: initialIndex >= 0 ? initialIndex : 0,
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (kind == _AttachmentKind.video) {
-      await navigator.push(
-        MaterialPageRoute<void>(
-          builder: (_) => MediaViewerScreen(
-            url: url,
-            type: MediaViewerType.video,
-          ),
-        ),
-      );
-      return;
-    }
-
-    final uri = Uri.tryParse(url);
-    if (uri != null && await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-      return;
-    }
-
-    messenger?.showSnackBar(
-      const SnackBar(content: Text('Unable to open this attachment.')),
     );
   }
 }
@@ -231,7 +189,7 @@ class _AttachmentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(kind == _AttachmentKind.other ? 14 : 18),
+      borderRadius: BorderRadius.circular(kind == _AttachmentKind.other ? 14 : 4),
       child: Container(
         height: height,
         decoration: const BoxDecoration(
@@ -256,27 +214,7 @@ class _AttachmentTile extends StatelessWidget {
               const Center(child: Icon(Icons.broken_image_outlined)),
         );
       case _AttachmentKind.video:
-        return const Stack(
-          fit: StackFit.expand,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF1B2A3B), Color(0xFF0F1317)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
-            Center(
-              child: Icon(
-                Icons.play_circle_outline,
-                color: Colors.white,
-                size: 42,
-              ),
-            ),
-          ],
-        );
+        return _VideoThumbnail(url: url);
       case _AttachmentKind.other:
         final label = url.split('/').last;
         return Container(
@@ -316,4 +254,104 @@ _AttachmentKind _detectKind(String url) {
     return _AttachmentKind.video;
   }
   return _AttachmentKind.other;
+}
+
+class _VideoThumbnail extends StatefulWidget {
+  const _VideoThumbnail({required this.url});
+
+  final String url;
+
+  @override
+  State<_VideoThumbnail> createState() => _VideoThumbnailState();
+}
+
+class _VideoThumbnailState extends State<_VideoThumbnail> {
+  Uint8List? _bytes;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _generateThumbnail();
+  }
+
+  Future<void> _generateThumbnail() async {
+    try {
+      final bytes = await VideoThumbnail.thumbnailData(
+        video: widget.url,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 256,
+        quality: 50,
+      );
+      if (mounted) {
+        setState(() {
+          _bytes = bytes;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_bytes != null) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.memory(
+            _bytes!,
+            fit: BoxFit.cover,
+          ),
+          Container(
+            color: Colors.black.withOpacity(0.3),
+            child: const Center(
+              child: Icon(
+                Icons.play_circle_outline,
+                color: Colors.white,
+                size: 42,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Fallback/Loading
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF1B2A3B), Color(0xFF0F1317)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        Center(
+          child: _isLoading
+              ? const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(Colors.white54),
+                  ),
+                )
+              : const Icon(
+                  Icons.play_circle_outline,
+                  color: Colors.white,
+                  size: 42,
+                ),
+        ),
+      ],
+    );
+  }
 }

@@ -8,6 +8,7 @@ class ConversationSummary {
     required this.lastActivity,
     required this.createdBy,
     this.title,
+    this.avatarUrl,
     this.lastMessage,
     this.unreadCount = 0,
     this.isGroup = false,
@@ -19,6 +20,7 @@ class ConversationSummary {
 
   final String id;
   final String? title;
+  final String? avatarUrl;
   final List<UserProfile> participants;
   final Message? lastMessage;
   final DateTime lastActivity;
@@ -61,6 +63,7 @@ class ConversationSummary {
     return ConversationSummary(
       id: id,
       title: json['title'] as String?,
+      avatarUrl: json['avatarUrl'] as String?,
       participants: (json['participants'] as List<dynamic>)
           .map((dynamic user) =>
               UserProfile.fromJson(user as Map<String, dynamic>))
@@ -89,6 +92,7 @@ class ConversationSummary {
     DateTime? lastActivity,
     int? unreadCount,
     String? title,
+    String? avatarUrl,
     bool? isGroup,
     bool? isPrivate,
     List<String>? adminIds,
@@ -98,6 +102,7 @@ class ConversationSummary {
     return ConversationSummary(
       id: id,
       title: title ?? this.title,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       participants: participants,
       lastMessage: lastMessage ?? this.lastMessage,
       lastActivity: lastActivity ?? this.lastActivity,

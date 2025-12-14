@@ -3,18 +3,24 @@ import 'package:video_player/video_player.dart';
 
 enum MediaViewerType { image, video }
 
-class MediaViewerScreen extends StatefulWidget {
-  const MediaViewerScreen({
-    super.key,
+class MediaItem {
+  const MediaItem({
     required this.url,
     required this.type,
-    this.imageUrls,
-    this.initialIndex = 0,
   });
 
   final String url;
   final MediaViewerType type;
-  final List<String>? imageUrls;
+}
+
+class MediaViewerScreen extends StatefulWidget {
+  const MediaViewerScreen({
+    super.key,
+    required this.galleryItems,
+    this.initialIndex = 0,
+  });
+
+  final List<MediaItem> galleryItems;
   final int initialIndex;
 
   @override
@@ -22,92 +28,107 @@ class MediaViewerScreen extends StatefulWidget {
 }
 
 class _MediaViewerScreenState extends State<MediaViewerScreen> {
-  VideoPlayerController? _videoController;
-  bool _videoError = false;
   late PageController _pageController;
   late int _currentPage;
+  VideoPlayerController? _currentVideoController;
+  bool _videoError = false;
 
   @override
   void initState() {
     super.initState();
     _currentPage = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
-    if (widget.type == MediaViewerType.video) {
-      _initializeVideo();
-    }
-  }
-
-  Future<void> _initializeVideo() async {
-    final uri = Uri.tryParse(widget.url);
-    if (uri == null) {
-      setState(() {
-        _videoError = true;
-      });
-      return;
-    }
-
-    final controller = VideoPlayerController.networkUrl(uri);
-    _videoController = controller;
-    try {
-      await controller.initialize();
-      await controller.setLooping(true);
-      await controller.play();
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _videoError = true;
-        });
-      }
-    }
+    _initializeCurrentMedia();
   }
 
   @override
   void dispose() {
-    _videoController?.dispose();
+    _currentVideoController?.dispose();
     _pageController.dispose();
     super.dispose();
   }
 
+  void _initializeCurrentMedia() {
+    _currentVideoController?.dispose();
+    _currentVideoController = null;
+    _videoError = false;
+
+    if (_currentPage < 0 || _currentPage >= widget.galleryItems.length) return;
+
+    final item = widget.galleryItems[_currentPage];
+    if (item.type == MediaViewerType.video) {
+      _initializeVideo(item.url);
+    }
+  }
+
+  Future<void> _initializeVideo(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      if (mounted) setState(() => _videoError = true);
+      return;
+    }
+
+    final controller = VideoPlayerController.networkUrl(uri);
+    _currentVideoController = controller;
+
+    try {
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.play();
+      if (mounted) setState(() {});
+    } catch (_) {
+      if (mounted) setState(() => _videoError = true);
+    }
+  }
+
+  void _onPageChanged(int index) {
+    setState(() {
+      _currentPage = index;
+    });
+    _initializeCurrentMedia();
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isGalleryMode = widget.imageUrls != null && widget.imageUrls!.length > 1;
-    
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: isGalleryMode
-            ? Text(
-                '${_currentPage + 1} / ${widget.imageUrls!.length}',
-                style: const TextStyle(fontSize: 16),
-              )
-            : null,
+        title:  Text(
+          '${_currentPage + 1} / ${widget.galleryItems.length}',
+          style: const TextStyle(fontSize: 16),
+        ),
       ),
-      body: Center(
-        child: widget.type == MediaViewerType.image
-            ? (isGalleryMode ? _buildImageGallery() : _buildImage(widget.url))
-            : _buildVideo(),
+      body: PageView.builder(
+        controller: _pageController,
+        onPageChanged: _onPageChanged,
+        itemCount: widget.galleryItems.length,
+        itemBuilder: (context, index) {
+          final item = widget.galleryItems[index];
+          if (item.type == MediaViewerType.image) {
+            return _buildImage(item.url);
+          } else {
+            // We only show the video player if it matches the current page's controller
+            // to avoid initializing multiple video controllers at once (simple approach)
+            // or we could use the instantiated controller if index == _currentPage
+            if (index == _currentPage) {
+               return _buildVideo();
+            } else {
+               // Placeholder for video while swiping
+               return const Center(child: CircularProgressIndicator(color: Colors.white24));
+            }
+          }
+        },
       ),
-    );
-  }
-
-  Widget _buildImageGallery() {
-    return PageView.builder(
-      controller: _pageController,
-      onPageChanged: (index) {
-        setState(() {
-          _currentPage = index;
-        });
-      },
-      itemCount: widget.imageUrls!.length,
-      itemBuilder: (context, index) {
-        return _buildImage(widget.imageUrls![index]);
-      },
     );
   }
 
@@ -125,23 +146,25 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
         ),
         loadingBuilder: (context, child, progress) {
           if (progress == null) return child;
-          return const CircularProgressIndicator(color: Colors.white);
+          return const Center(child: CircularProgressIndicator(color: Colors.white));
         },
       ),
     );
   }
 
   Widget _buildVideo() {
-    final controller = _videoController;
+    final controller = _currentVideoController;
     if (_videoError) {
-      return const Text(
-        'Unable to play video',
-        style: TextStyle(color: Colors.white70),
+      return const Center(
+        child: Text(
+          'Unable to play video',
+          style: TextStyle(color: Colors.white70),
+        ),
       );
     }
 
     if (controller == null || !controller.value.isInitialized) {
-      return const CircularProgressIndicator(color: Colors.white);
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
     }
 
     return GestureDetector(
@@ -167,6 +190,58 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
               size: 72,
               color: Colors.white70,
             ),
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              color: Colors.black54,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              child: Row(
+                children: [
+                  ValueListenableBuilder(
+                    valueListenable: controller,
+                    builder: (context, VideoPlayerValue value, child) {
+                      final position = value.position;
+                      return Text(
+                        _formatDuration(position),
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                      );
+                    },
+                  ),
+                  Expanded(
+                    child: ValueListenableBuilder(
+                      valueListenable: controller,
+                      builder: (context, VideoPlayerValue value, child) {
+                        final duration = value.duration.inMilliseconds.toDouble();
+                        final position = value.position.inMilliseconds.toDouble();
+                        return Slider(
+                          value: position.clamp(0.0, duration),
+                          min: 0.0,
+                          max: duration,
+                          activeColor: Colors.white,
+                          inactiveColor: Colors.white24,
+                          onChanged: (newValue) {
+                            controller.seekTo(Duration(milliseconds: newValue.toInt()));
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  ValueListenableBuilder(
+                    valueListenable: controller,
+                    builder: (context, VideoPlayerValue value, child) {
+                      final duration = value.duration;
+                      return Text(
+                        _formatDuration(duration),
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

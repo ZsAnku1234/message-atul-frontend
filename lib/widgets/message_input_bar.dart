@@ -188,10 +188,16 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
       _showError('Attachment limit reached.');
       return;
     }
-    final video = await _picker.pickVideo(source: ImageSource.gallery);
-    if (video != null) {
-      await _uploadAttachments([video], _AttachmentType.video);
-    }
+    // Using pickMultipleMedia to allow selecting multiple videos
+    final medias = await _picker.pickMultipleMedia(
+      limit: _maxAttachments - _attachments.length,
+    );
+    
+    if (medias.isEmpty) return;
+
+    // Filter to keep mostly videos if possible, or just upload all
+    // Since pickMultipleMedia returns both images and videos, we'll just accept them.
+    await _uploadAttachments(medias, _AttachmentType.video);
   }
 
   Future<void> _uploadAttachments(

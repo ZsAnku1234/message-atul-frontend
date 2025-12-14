@@ -156,11 +156,15 @@ class ChatRepository {
   Future<ConversationSummary> updateConversation({
     required String conversationId,
     String? title,
+    String? avatarUrl,
     bool? isPrivate,
   }) async {
     final payload = <String, dynamic>{};
     if (title != null && title.trim().isNotEmpty) {
       payload['title'] = title.trim();
+    }
+    if (avatarUrl != null) {
+      payload['avatarUrl'] = avatarUrl;
     }
     if (isPrivate != null) {
       payload['isPrivate'] = isPrivate;

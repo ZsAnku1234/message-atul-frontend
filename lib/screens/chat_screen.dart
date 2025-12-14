@@ -5,8 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'media_viewer_screen.dart';
 
 import '../features/auth/auth_controller.dart';
 import '../features/chat/chat_controller.dart';
@@ -232,12 +236,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             : Row(
                 children: [
                   AppAvatar(
-                    imageUrl: primaryParticipant?.avatarUrl,
-                    initials: primaryParticipant != null
-                        ? (primaryParticipant.displayName.isNotEmpty
-                            ? primaryParticipant.displayName[0]
-                            : '?')
-                        : '?',
+                    imageUrl: isGroup
+                        ? conversation.avatarUrl
+                        : primaryParticipant?.avatarUrl,
+                    initials: isGroup
+                        ? (displayTitle.isNotEmpty ? displayTitle[0] : '?')
+                        : (primaryParticipant != null
+                            ? (primaryParticipant.displayName.isNotEmpty
+                                ? primaryParticipant.displayName[0]
+                                : '?')
+                            : '?'),
                     size: 42,
                   ),
                   const SizedBox(width: 12),
@@ -342,7 +350,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         if (item.isHeader) {
                           return _DateDivider(label: item.label!);
                         }
-                        return MessageBubble(message: item.message!);
+                        return MessageBubble(
+                          message: item.message!,
+                          onAttachmentTap: (url, kind) =>
+                              _handleAttachmentTap(url, kind, chatState.messages),
+                        );
                       },
                     ),
             ),
@@ -390,6 +402,85 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     return items;
+  }
+
+  Future<void> _handleAttachmentTap(
+    String url,
+    dynamic kind, // _AttachmentKind implied, but imported transitively or using dynamic to avoid tight coupling if not exported
+    List<Message> allMessages,
+  ) async {
+    // We need to check if kind is 'other' (document), if so, open externally
+    // Since _AttachmentKind is private in message_bubble, we can infer from string or pass a string logic.
+    // Actually, let's copy the detection logic or rely on the extension/helper if available.
+    // For now, let's look at the implementation in message_bubble.dart:
+    // It passes `_AttachmentKind` which is an enum.
+    // We can't easily import private enum.
+    // Better approach: MessageBubble should handle "Other" types internally (open URL),
+    // and only call callback for Image/Video.
+    
+    // But since we removed internal handling in MessageBubble, we have to handle it here.
+    // We can check extension here.
+    
+    final lower = url.toLowerCase();
+    final isImage =  ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic']
+        .any((ext) => lower.endsWith(ext)) || lower.contains('/image/');
+    final isVideo = ['.mp4', '.mov', '.m4v', '.avi', '.webm', '.mkv']
+        .any((ext) => lower.endsWith(ext)) || lower.contains('/video/');
+        
+    if (!isImage && !isVideo) {
+      // Document or other
+       final uri = Uri.tryParse(url);
+       if (uri != null && await canLaunchUrl(uri)) {
+         await launchUrl(uri, mode: LaunchMode.externalApplication);
+       } else {
+         if (!mounted) return;
+         ScaffoldMessenger.of(context).showSnackBar(
+           const SnackBar(content: Text('Unable to open this attachment.')),
+         );
+       }
+       return;
+    }
+
+    // It is media. Aggregate all media from messages.
+    // Messages are sorted by date. We want the gallery to follow that order.
+    // However, the ListView displays them, and `chatState.messages` has them.
+    // `chatState.messages` in `ChatController` are usually sorted by createdAt ascending (oldest to newest)?
+    // Let's check ChatController... yes ` ..sort((a, b) => a.createdAt.compareTo(b.createdAt));`
+    
+    final galleryItems = <MediaItem>[];
+    int initialIndex = 0;
+    
+    for (final message in allMessages) {
+       for (final attachment in message.attachments) {
+         final attLower = attachment.toLowerCase();
+         final isImg = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic']
+            .any((ext) => attLower.endsWith(ext)) || attLower.contains('/image/');
+         final isVid = ['.mp4', '.mov', '.m4v', '.avi', '.webm', '.mkv']
+            .any((ext) => attLower.endsWith(ext)) || attLower.contains('/video/');
+            
+         if (isImg) {
+           galleryItems.add(MediaItem(url: attachment, type: MediaViewerType.image));
+         } else if (isVid) {
+           galleryItems.add(MediaItem(url: attachment, type: MediaViewerType.video));
+         }
+         
+         if (attachment == url) {
+           initialIndex = galleryItems.length - 1;
+         }
+       }
+    }
+    
+    if (galleryItems.isEmpty) return;
+    
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MediaViewerScreen(
+          galleryItems: galleryItems,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
   }
 
   String _formatDateLabel(DateTime dateInIndia) {
@@ -483,7 +574,9 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
   Timer? _memberDebounce;
   bool _isSearchingMembers = false;
   bool _isSaving = false;
+  bool _isUploadingAvatar = false;
   String? _errorMessage;
+  String? _tempAvatarUrl;
 
   @override
   void initState() {
@@ -526,7 +619,76 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
     if (_pendingMembers.isNotEmpty) {
       return true;
     }
+    if (_tempAvatarUrl != null) {
+      return true;
+    }
     return false;
+  }
+
+  Future<void> _pickAndUploadAvatar() async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      maxHeight: 800,
+      imageQuality: 85,
+    );
+
+    if (image == null) return;
+
+    setState(() {
+      _isUploadingAvatar = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final dio = ref.read(dioProvider);
+      
+      // Read image bytes for web compatibility
+      final bytes = await image.readAsBytes();
+      final fileName = image.name;
+      
+      final formData = FormData.fromMap({
+        'files': MultipartFile.fromBytes(
+          bytes,
+          filename: fileName.isEmpty ? 'group_avatar.jpg' : fileName,
+        ),
+      });
+
+      final response = await dio.post(
+        '/media/avatar',
+        data: formData,
+        options: Options(
+          sendTimeout: const Duration(minutes: 5),
+          receiveTimeout: const Duration(minutes: 5),
+        ),
+      );
+      final avatarUrl = response.data['avatarUrl'] as String;
+
+      if (!mounted) return;
+
+      setState(() {
+        _tempAvatarUrl = avatarUrl;
+        _isUploadingAvatar = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      
+      String errorMsg = 'Failed to upload image. Please try again.';
+      if (error is DioException) {
+        if (error.response?.data != null) {
+          final data = error.response!.data;
+          if (data is Map && data['message'] != null) {
+            errorMsg = data['message'].toString();
+          }
+        }
+      }
+      
+      setState(() {
+        _isUploadingAvatar = false;
+        _errorMessage = errorMsg;
+      });
+    }
   }
 
   void _toggleAdmin(String userId, bool value) {
@@ -725,6 +887,14 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
           });
         }
       }
+
+      if (_tempAvatarUrl != null) {
+         await ref.read(chatControllerProvider.notifier).updateGroupDetails(
+              conversationId: widget.conversation.id,
+              avatarUrl: _tempAvatarUrl,
+            );
+      }
+
       if (!mounted) return;
       Navigator.of(context).pop();
     } catch (error) {
@@ -790,6 +960,51 @@ class _GroupManagementSheetState extends ConsumerState<_GroupManagementSheet> {
                     icon: const Icon(Icons.close_rounded),
                   ),
                 ],
+              ),
+              const SizedBox(height: 24),
+              Center(
+                child: Stack(
+                  children: [
+                    AppAvatar(
+                      imageUrl: _tempAvatarUrl ?? widget.conversation.avatarUrl,
+                      initials: widget.conversation.displayTitle.isNotEmpty
+                          ? widget.conversation.displayTitle[0]
+                          : '?',
+                      size: 80,
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap:
+                            _isUploadingAvatar || _isSaving ? null : _pickAndUploadAvatar,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: _isUploadingAvatar
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor:
+                                        AlwaysStoppedAnimation(Colors.white),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.camera_alt,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
               SwitchListTile.adaptive(

@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:247274581964:android:2556ecb55e73ebff65f769",
         "android_client_info": {
-          "package_name": "com.example.frontend"
+          "package_name": "com.nuttgram.app"
         }
       },
       "oauth_client": [],

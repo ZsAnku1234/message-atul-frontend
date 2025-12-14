@@ -335,6 +335,24 @@ class ChatController extends StateNotifier<ChatState> {
     }
   }
 
+  Future<void> updateGroupDetails({
+    required String conversationId,
+    String? title,
+    String? avatarUrl,
+  }) async {
+    try {
+      final conversation = await _repository.updateConversation(
+        conversationId: conversationId,
+        title: title,
+        avatarUrl: avatarUrl,
+      );
+      _upsertConversation(conversation);
+    } catch (error) {
+      state = state.copyWith(errorMessage: _mapError(error));
+      rethrow;
+    }
+  }
+
   Future<void> respondToJoinRequest({
     required String conversationId,
     required String applicantId,

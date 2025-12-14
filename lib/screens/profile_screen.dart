@@ -71,7 +71,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
       });
 
-      final response = await dio.post('/media/avatar', data: formData);
+      final response = await dio.post(
+        '/media/avatar',
+        data: formData,
+        options: Options(
+          sendTimeout: const Duration(minutes: 10),
+          receiveTimeout: const Duration(minutes: 10),
+        ),
+      );
       final avatarUrl = response.data['avatarUrl'] as String;
 
       if (!mounted) return;
