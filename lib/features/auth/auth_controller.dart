@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/user.dart';
 import '../../services/auth_repository.dart';
 import '../../providers/app_providers.dart';
+import '../../services/notification_service.dart';
 import 'auth_state.dart';
 
 class AuthController extends StateNotifier<AuthState> {
@@ -30,6 +31,9 @@ class AuthController extends StateNotifier<AuthState> {
       final user = await _repository.currentUser();
       print('[AuthController] User loaded: ${user.displayName}, avatar: ${user.avatarUrl}');
       state = AuthState.authenticated(user);
+      
+      // Initialize notifications
+      await _ref.read(notificationServiceProvider).initialize();
     } catch (error, stackTrace) {
       developer.log(
         'Failed to initialize auth session',
@@ -86,6 +90,7 @@ class AuthController extends StateNotifier<AuthState> {
       );
       await _repository.persistToken(payload.token);
       state = AuthState.authenticated(payload.user);
+      await _ref.read(notificationServiceProvider).initialize();
       return true;
     } catch (error, stackTrace) {
       developer.log(
@@ -116,6 +121,7 @@ class AuthController extends StateNotifier<AuthState> {
       );
       await _repository.persistToken(payload.token);
       state = AuthState.authenticated(payload.user);
+      await _ref.read(notificationServiceProvider).initialize();
       return true;
     } catch (error, stackTrace) {
       developer.log(
@@ -171,6 +177,7 @@ class AuthController extends StateNotifier<AuthState> {
       );
       await _repository.persistToken(payload.token);
       state = AuthState.authenticated(payload.user);
+      await _ref.read(notificationServiceProvider).initialize();
       return true;
     } catch (error, stackTrace) {
       developer.log(
@@ -189,8 +196,16 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> signOut() async {
     try {
-      await _repository.clearToken();
+      await _ref.read(notificationServiceProvider).unregisterToken();
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to unregister push token',
+        name: 'AuthController',
+        error: error,
+        stackTrace: stackTrace,
+      );
     } finally {
+      await _repository.clearToken();
       state = AuthState.unauthenticated();
     }
   }
