@@ -13,10 +13,12 @@ class MessageBubble extends StatelessWidget {
     super.key,
     required this.message,
     this.onAttachmentTap,
+    this.onDelete,
   });
 
   final Message message;
   final void Function(String url, _AttachmentKind kind)? onAttachmentTap;
+  final void Function(String messageId)? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -71,60 +73,65 @@ class MessageBubble extends StatelessWidget {
           top: 4,
           bottom: 4,
         ),
-        child: DecoratedBox(
-          decoration: bubbleDecoration,
-          child: Padding(
-            padding: (!hasText && message.attachments.isNotEmpty)
-                ? const EdgeInsets.all(4)
-                : const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Column(
-              crossAxisAlignment:
-                  isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (message.attachments.isNotEmpty)
-                  Padding(
-                    padding: EdgeInsets.only(bottom: hasText ? 10 : 2),
-                    child: _AttachmentGrid(
-                      attachments: message.attachments,
-                      onTap: (url, kind) => onAttachmentTap?.call(url, kind),
-                    ),
-                  ),
-                if (hasText)
-                  Text(
-                    message.body,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 15.5,
-                      height: 1.5,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.1,
-                    ),
-                  ),
-                const SizedBox(height: 6),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: isMine
-                      ? MainAxisAlignment.end
-                      : MainAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.done_all_rounded,
-                      size: 16,
-                      color: metaColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      message.formattedTime,
-                      style: TextStyle(
-                        color: metaColor,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
+        child: GestureDetector(
+          onLongPress: (isMine && onDelete != null)
+              ? () => onDelete!(message.id)
+              : null,
+          child: DecoratedBox(
+            decoration: bubbleDecoration,
+            child: Padding(
+              padding: (!hasText && message.attachments.isNotEmpty)
+                  ? const EdgeInsets.all(4)
+                  : const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Column(
+                crossAxisAlignment:
+                    isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (message.attachments.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(bottom: hasText ? 10 : 2),
+                      child: _AttachmentGrid(
+                        attachments: message.attachments,
+                        onTap: (url, kind) => onAttachmentTap?.call(url, kind),
                       ),
                     ),
-                  ],
-                ),
-              ],
+                  if (hasText)
+                    Text(
+                      message.body,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 15.5,
+                        height: 1.5,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: isMine
+                        ? MainAxisAlignment.end
+                        : MainAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.done_all_rounded,
+                        size: 16,
+                        color: metaColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        message.formattedTime,
+                        style: TextStyle(
+                          color: metaColor,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -22,7 +22,7 @@ class MessageInputBar extends ConsumerStatefulWidget {
 }
 
 class _MessageInputBarState extends ConsumerState<MessageInputBar> {
-  static const int _maxAttachments = 5;
+  static const int _maxAttachments = 50;
 
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
@@ -343,8 +343,8 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(18),
+                        color: AppColors.surfaceDark,
+                        borderRadius: BorderRadius.circular(20),
                       ),
                       child: TextField(
                         controller: _controller,
@@ -353,8 +353,11 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                         enabled: widget.isEnabled,
                         minLines: 1,
                         maxLines: 4,
+                        style: const TextStyle(color: Colors.white),
+                        cursorColor: Colors.white,
                         decoration: const InputDecoration(
                           hintText: 'Write a message...',
+                          hintStyle: TextStyle(color: Colors.grey),
                           border: InputBorder.none,
                         ),
                         onSubmitted: (_) => _submit(),
@@ -364,7 +367,7 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                   const SizedBox(width: 12),
                   InkWell(
                     onTap: isBusy || !widget.isEnabled ? null : _submit,
-                    borderRadius: BorderRadius.circular(30),
+                    borderRadius: BorderRadius.circular(20),
                     child: Container(
                       height: 46,
                       width: 46,

@@ -354,6 +354,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           message: item.message!,
                           onAttachmentTap: (url, kind) =>
                               _handleAttachmentTap(url, kind, chatState.messages),
+                          onDelete: _handleDeleteMessage,
                         );
                       },
                     ),
@@ -402,6 +403,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     return items;
+  }
+
+  Future<void> _handleDeleteMessage(String messageId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete message?'),
+        content: const Text('This message will be deleted for everyone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await ref.read(chatRepositoryProvider).deleteMessage(messageId);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to delete message.')),
+      );
+    }
   }
 
   Future<void> _handleAttachmentTap(

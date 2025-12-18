@@ -50,6 +50,10 @@ class ChatRepository {
         Map<String, dynamic>.from(response.data!['message'] as Map));
   }
 
+  Future<void> deleteMessage(String messageId) async {
+    await _dio.delete<void>('/messages/$messageId');
+  }
+
   Future<ConversationSummary> createConversation({
     required List<String> participantIds,
     String? title,
