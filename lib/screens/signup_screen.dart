@@ -103,12 +103,16 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     final authController = ref.read(authControllerProvider.notifier);
     final phoneNumber = _normalizedPhone ?? _phoneController.text.trim();
 
-    await authController.signup(
+    final success = await authController.signup(
       phoneNumber: phoneNumber,
       code: _otpController.text.trim(),
       displayName: _displayNameController.text.trim(),
       password: _passwordController.text,
     );
+
+    if (success && mounted) {
+      context.go('/conversations');
+    }
   }
 
   void _resetOtpRequest() {

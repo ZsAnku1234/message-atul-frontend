@@ -42,10 +42,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     final authController = ref.read(authControllerProvider.notifier);
-    await authController.loginWithPassword(
+    final success = await authController.loginWithPassword(
       phoneNumber: _phoneController.text.trim(),
       password: _passwordController.text,
     );
+
+    if (success && mounted) {
+      context.go('/conversations');
+    }
   }
 
   String? _validatePhone(String? value) {

@@ -24,12 +24,25 @@ class NotificationService {
   NotificationService(this._ref);
 
   Future<void> initialize() async {
-    // Listen for auth state changes to handle pending notifications
+    // Listen for auth state changes
     _ref.listen<AuthState>(authControllerProvider, (previous, next) {
+      // Handle pending notifications on login
       if (next.isAuthenticated && _pendingNotificationData != null) {
         print("User authenticated, processing pending notification...");
         _handleNotificationTap(_pendingNotificationData!);
         _pendingNotificationData = null;
+      }
+
+      // Handle Token Registration on Login
+      if ((previous?.isAuthenticated ?? false) == false && next.isAuthenticated) {
+        print("User logged in. Registering FCM token...");
+        _registerToken();
+      }
+
+      // Handle Token Unregistration on Logout
+      if ((previous?.isAuthenticated ?? false) == true && !next.isAuthenticated) {
+        print("User logged out. Unregistering FCM token...");
+        unregisterToken();
       }
     });
 

@@ -31,9 +31,6 @@ class AuthController extends StateNotifier<AuthState> {
       final user = await _repository.currentUser();
       print('[AuthController] User loaded: ${user.displayName}, avatar: ${user.avatarUrl}');
       state = AuthState.authenticated(user);
-      
-      // Initialize notifications
-      await _ref.read(notificationServiceProvider).initialize();
     } catch (error, stackTrace) {
       developer.log(
         'Failed to initialize auth session',
@@ -90,7 +87,6 @@ class AuthController extends StateNotifier<AuthState> {
       );
       await _repository.persistToken(payload.token);
       state = AuthState.authenticated(payload.user);
-      await _ref.read(notificationServiceProvider).initialize();
       return true;
     } catch (error, stackTrace) {
       developer.log(
@@ -121,9 +117,10 @@ class AuthController extends StateNotifier<AuthState> {
       );
       await _repository.persistToken(payload.token);
       state = AuthState.authenticated(payload.user);
-      await _ref.read(notificationServiceProvider).initialize();
       return true;
     } catch (error, stackTrace) {
+      print('[AuthController] Login EXCEPTION: $error'); // Added debug log
+      print('[AuthController] StackTrace: $stackTrace'); // Added debug log
       developer.log(
         'Login failed',
         name: 'AuthController',
@@ -177,7 +174,6 @@ class AuthController extends StateNotifier<AuthState> {
       );
       await _repository.persistToken(payload.token);
       state = AuthState.authenticated(payload.user);
-      await _ref.read(notificationServiceProvider).initialize();
       return true;
     } catch (error, stackTrace) {
       developer.log(
@@ -196,17 +192,15 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> signOut() async {
     try {
-      await _ref.read(notificationServiceProvider).unregisterToken();
+      await _repository.clearToken();
+      state = AuthState.unauthenticated();
     } catch (error, stackTrace) {
       developer.log(
-        'Failed to unregister push token',
+        'Sign out failed',
         name: 'AuthController',
         error: error,
         stackTrace: stackTrace,
       );
-    } finally {
-      await _repository.clearToken();
-      state = AuthState.unauthenticated();
     }
   }
 

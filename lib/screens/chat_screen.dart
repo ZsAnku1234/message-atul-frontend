@@ -267,10 +267,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ],
               ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.call_outlined),
-            onPressed: () {},
-          ),
+
           if (conversation != null && isGroup)
             PopupMenuButton<String>(
               enabled: !_isLeaving,
@@ -350,11 +347,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         if (item.isHeader) {
                           return _DateDivider(label: item.label!);
                         }
+                        final canForward = isGroup ? isAdmin : true;
+
                         return MessageBubble(
                           message: item.message!,
                           onAttachmentTap: (url, kind) =>
                               _handleAttachmentTap(url, kind, chatState.messages),
                           onDelete: _handleDeleteMessage,
+                          onForward: canForward ? _handleForwardMessage : null,
                         );
                       },
                     ),
@@ -437,6 +437,50 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  Future<void> _handleForwardMessage(Message message) async {
+    // 1. Show conversation picker
+    final destinationId = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const _ForwardSelectorSheet(),
+    );
+
+    if (destinationId == null) return;
+
+    // 2. Send message to destination
+    try {
+      final chatNotifier = ref.read(chatControllerProvider.notifier);
+      
+      // Temporarily switch to that conversation to send? 
+      // Or just use repository directly? Repository is cleaner.
+      // But ChatNotifier usually manages the socket events.
+      // Easiest: Call sendMessage on the repo, but we need conversationId.
+      
+      // We will perform the send in background using the repository
+      final repo = ref.read(chatRepositoryProvider);
+      await repo.sendMessage(
+        conversationId: destinationId,
+        content: message.body,
+        attachments: message.attachments, // Forward attachments too
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Message forwarded')),
+      );
+      
+      // Optional: Navigate to that chat? 
+      // context.push('/conversations/$destinationId'); 
+    } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to forward message')),
+        );
+    }
+  }
+
   Future<void> _handleAttachmentTap(
     String url,
     dynamic kind, // _AttachmentKind implied, but imported transitively or using dynamic to avoid tight coupling if not exported
@@ -479,7 +523,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // However, the ListView displays them, and `chatState.messages` has them.
     // `chatState.messages` in `ChatController` are usually sorted by createdAt ascending (oldest to newest)?
     // Let's check ChatController... yes ` ..sort((a, b) => a.createdAt.compareTo(b.createdAt));`
-    
+
     final galleryItems = <MediaItem>[];
     int initialIndex = 0;
     
@@ -1315,6 +1359,93 @@ class _PendingRequestList extends StatelessWidget {
           );
         }),
       ],
+    );
+  }
+}
+
+class _ForwardSelectorSheet extends ConsumerWidget {
+  const _ForwardSelectorSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Reuse the repository logic or fetch conversations
+    final listFuture = ref.watch(chatRepositoryProvider).fetchConversations();
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.fromLTRB(0, 20, 0, 0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+           Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Forward to...',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          const Divider(),
+          Expanded(
+            child: FutureBuilder<List<ConversationSummary>>(
+              future: listFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+                
+                final list = snapshot.data ?? [];
+                
+                if (list.isEmpty) {
+                  return const Center(child: Text('No conversations found'));
+                }
+                
+                return ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  itemCount: list.length,
+                  itemBuilder: (context, index) {
+                    final item = list[index];
+                    final currentUserId = ref.read(authControllerProvider).user?.id;
+                    final title = item.titleFor(currentUserId);
+                    final participant = item.participantForDisplay(currentUserId);
+                    final isGroup = item.isGroup;
+                    
+                    return ListTile(
+                      leading: AppAvatar(
+                         imageUrl: isGroup ? item.avatarUrl : participant?.avatarUrl,
+                         initials: title.isNotEmpty ? title[0] : '?',
+                         size: 40,
+                      ),
+                      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+                      subtitle: isGroup 
+                        ? Text('${item.participants.length} members')
+                        : null,
+                      onTap: () => Navigator.pop(context, item.id),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

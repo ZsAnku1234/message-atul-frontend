@@ -70,8 +70,8 @@ class MediaRepository {
       data: formData,
       options: Options(
         contentType: 'multipart/form-data',
-        sendTimeout: const Duration(minutes: 60),
-        receiveTimeout: const Duration(minutes: 60),
+        sendTimeout: const Duration(hours: 5),
+        receiveTimeout: const Duration(hours: 5),
       ),
     );
 

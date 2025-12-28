@@ -1,8 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/message.dart';
 import '../screens/media_viewer_screen.dart';
@@ -14,11 +11,69 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     this.onAttachmentTap,
     this.onDelete,
+    this.onForward,
   });
 
   final Message message;
   final void Function(String url, _AttachmentKind kind)? onAttachmentTap;
   final void Function(String messageId)? onDelete;
+  final void Function(Message message)? onForward;
+
+  void _showMessageMenu(BuildContext context, Offset position) {
+    if (onDelete == null && onForward == null) return;
+
+    final items = <PopupMenuEntry<String>>[];
+    
+    if (onForward != null) {
+      items.add(
+        const PopupMenuItem(
+          value: 'forward',
+          child: Row(
+            children: [
+              Icon(Icons.forward, size: 20, color: Colors.black54),
+              SizedBox(width: 12),
+              Text('Forward'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (onDelete != null && message.isMine) {
+      items.add(
+        const PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline, size: 20, color: Colors.red),
+              SizedBox(width: 12),
+              Text('Delete', style: TextStyle(color: Colors.red)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (items.isEmpty) return;
+
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy,
+        position.dx + 1,
+        position.dy + 1,
+      ),
+      items: items,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ).then((value) {
+      if (value == 'delete') {
+         onDelete?.call(message.id);
+      } else if (value == 'forward') {
+         onForward?.call(message);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,9 +129,9 @@ class MessageBubble extends StatelessWidget {
           bottom: 4,
         ),
         child: GestureDetector(
-          onLongPress: (isMine && onDelete != null)
-              ? () => onDelete!(message.id)
-              : null,
+          onLongPressStart: (details) {
+            _showMessageMenu(context, details.globalPosition);
+          },
           child: DecoratedBox(
             decoration: bubbleDecoration,
             child: Padding(
@@ -263,100 +318,63 @@ _AttachmentKind _detectKind(String url) {
   return _AttachmentKind.other;
 }
 
-class _VideoThumbnail extends StatefulWidget {
+class _VideoThumbnail extends StatelessWidget {
   const _VideoThumbnail({required this.url});
 
   final String url;
 
-  @override
-  State<_VideoThumbnail> createState() => _VideoThumbnailState();
-}
-
-class _VideoThumbnailState extends State<_VideoThumbnail> {
-  Uint8List? _bytes;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _generateThumbnail();
-  }
-
-  Future<void> _generateThumbnail() async {
-    try {
-      final bytes = await VideoThumbnail.thumbnailData(
-        video: widget.url,
-        imageFormat: ImageFormat.JPEG,
-        maxWidth: 256,
-        quality: 50,
-      );
-      if (mounted) {
-        setState(() {
-          _bytes = bytes;
-          _isLoading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+  String get _thumbnailUrl {
+    // Assumption: Backend generates thumbnails with _thumb.jpg suffix for video files
+    // Example: .../video.mp4 -> .../video_thumb.jpg
+    final extension = url.split('.').last;
+    if (url.endsWith('.$extension')) {
+      return url.replaceFirst('.$extension', '_thumb.jpg');
     }
+    return '$url.jpg'; // Fallback
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_bytes != null) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.memory(
-            _bytes!,
-            fit: BoxFit.cover,
-          ),
-          Container(
-            color: Colors.black.withOpacity(0.3),
-            child: const Center(
-              child: Icon(
-                Icons.play_circle_outline,
-                color: Colors.white,
-                size: 42,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    // Fallback/Loading
     return Stack(
       fit: StackFit.expand,
       children: [
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF1B2A3B), Color(0xFF0F1317)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+        Image.network(
+          _thumbnailUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            // Fallback to a solid color or gradient if thumbnail missing (legacy videos)
+            return Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF1B2A3B), Color(0xFF0F1317)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            );
+          },
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return Container(
+              color: Colors.black12,
+              child: const Center(
+                child: SizedBox(
+                   width: 20, height: 20,
+                   child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          },
+        ),
+        Container(
+          color: Colors.black.withOpacity(0.3),
+          child: const Center(
+            child: Icon(
+              Icons.play_circle_outline,
+              color: Colors.white,
+              size: 42,
             ),
           ),
-        ),
-        Center(
-          child: _isLoading
-              ? const SizedBox(
-                  height: 24,
-                  width: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(Colors.white54),
-                  ),
-                )
-              : const Icon(
-                  Icons.play_circle_outline,
-                  color: Colors.white,
-                  size: 42,
-                ),
         ),
       ],
     );

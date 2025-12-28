@@ -1,14 +1,14 @@
 import 'package:dio/dio.dart';
 
-const _defaultConnectTimeout = Duration(seconds: 120);
-const _defaultTransferTimeout = Duration(minutes: 30);
+const _defaultConnectTimeout = Duration(hours: 5);
+const _defaultTransferTimeout = Duration(hours: 5);
 
 Dio createApiClient() {
   final dio = Dio(
     BaseOptions(
       baseUrl: const String.fromEnvironment(
         'API_BASE_URL',
-        // defaultValue: 'http://localhost:3000/api',
+        // defaultValue: 'http://10.133.245.111:3000/api',
         defaultValue: 'https://api.nuttgram.com/api',
       ),
       connectTimeout: _defaultConnectTimeout,
