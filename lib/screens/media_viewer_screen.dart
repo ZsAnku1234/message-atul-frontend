@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 enum MediaViewerType { image, video }
 
@@ -61,6 +63,14 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     }
   }
 
+  void _videoListener() {
+    final controller = _currentVideoController;
+    if (controller != null && controller.value.hasError && !_videoError) {
+      debugPrint('Video player error: ${controller.value.errorDescription}');
+      if (mounted) setState(() => _videoError = true);
+    }
+  }
+
   Future<void> _initializeVideo(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) {
@@ -70,13 +80,15 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
 
     final controller = VideoPlayerController.networkUrl(uri);
     _currentVideoController = controller;
+    controller.addListener(_videoListener);
 
     try {
       await controller.initialize();
       await controller.setLooping(true);
       await controller.play();
       if (mounted) setState(() {});
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Video initialization error: $e');
       if (mounted) setState(() => _videoError = true);
     }
   }
@@ -99,11 +111,17 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true, // Allow content to go behind app bar
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.transparent, // Transparent background
         foregroundColor: Colors.white,
         elevation: 0,
-        title:  Text(
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light, // White icons
+          statusBarBrightness: Brightness.dark, // iOS
+        ),
+        title: Text(
           '${_currentPage + 1} / ${widget.galleryItems.length}',
           style: const TextStyle(fontSize: 16),
         ),
@@ -117,13 +135,9 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
           if (item.type == MediaViewerType.image) {
             return _buildImage(item.url);
           } else {
-            // We only show the video player if it matches the current page's controller
-            // to avoid initializing multiple video controllers at once (simple approach)
-            // or we could use the instantiated controller if index == _currentPage
             if (index == _currentPage) {
                return _buildVideo();
             } else {
-               // Placeholder for video while swiping
                return const Center(child: CircularProgressIndicator(color: Colors.white24));
             }
           }
@@ -155,10 +169,30 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   Widget _buildVideo() {
     final controller = _currentVideoController;
     if (_videoError) {
-      return const Center(
-        child: Text(
-          'Unable to play video',
-          style: TextStyle(color: Colors.white70),
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.white54),
+            const SizedBox(height: 16),
+            const Text(
+              'Cannot play video',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                final item = widget.galleryItems[_currentPage];
+                launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
+              },
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open in external player'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white24,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         ),
       );
     }

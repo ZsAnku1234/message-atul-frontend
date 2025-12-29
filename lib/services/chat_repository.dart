@@ -259,6 +259,29 @@ class ChatRepository {
       nextCursor: data['nextCursor'] as String?,
     );
   }
+
+  Future<List<Message>> fetchMedia({
+    required String conversationId,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/messages/conversations/$conversationId/media',
+      queryParameters: {
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      },
+    );
+
+    final data = response.data!;
+    // Backend returns { media: [MessageObjects...] }
+    final messages = (data['media'] as List<dynamic>)
+        .map((dynamic json) =>
+            ChatMapper.mapMessage(Map<String, dynamic>.from(json as Map)))
+        .toList();
+
+    return messages;
+  }
   Future<String> fetchInviteLink(String conversationId) async {
     final response = await _dio.post<Map<String, dynamic>>(
       '/conversations/$conversationId/invite-link',

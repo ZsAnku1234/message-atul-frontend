@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'media_viewer_screen.dart';
+import 'chat_media_gallery_screen.dart';
 
 import '../features/auth/auth_controller.dart';
 import '../features/chat/chat_controller.dart';
@@ -233,38 +234,50 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         titleSpacing: 0,
         title: conversation == null
             ? const SizedBox.shrink()
-            : Row(
-                children: [
-                  AppAvatar(
-                    imageUrl: isGroup
-                        ? conversation.avatarUrl
-                        : primaryParticipant?.avatarUrl,
-                    initials: isGroup
-                        ? (displayTitle.isNotEmpty ? displayTitle[0] : '?')
-                        : (primaryParticipant != null
-                            ? (primaryParticipant.displayName.isNotEmpty
-                                ? primaryParticipant.displayName[0]
-                                : '?')
-                            : '?'),
-                    size: 42,
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        displayTitle,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 18),
-                      ),
-                      Text(
-                        '${conversation.participants.length} participants',
-                        style: TextStyle(
-                            color: Colors.grey.shade500, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ],
+            : InkWell(
+                onTap: () {
+                   Navigator.of(context).push(
+                     MaterialPageRoute(
+                       builder: (_) => ChatMediaGalleryScreen(
+                         conversationId: widget.conversationId,
+                         title: displayTitle,
+                       ),
+                     ),
+                   );
+                },
+                child: Row(
+                  children: [
+                    AppAvatar(
+                      imageUrl: isGroup
+                          ? conversation.avatarUrl
+                          : primaryParticipant?.avatarUrl,
+                      initials: isGroup
+                          ? (displayTitle.isNotEmpty ? displayTitle[0] : '?')
+                          : (primaryParticipant != null
+                              ? (primaryParticipant.displayName.isNotEmpty
+                                  ? primaryParticipant.displayName[0]
+                                  : '?')
+                              : '?'),
+                      size: 42,
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayTitle,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 18),
+                        ),
+                        Text(
+                          '${conversation.participants.length} participants',
+                          style: TextStyle(
+                              color: Colors.grey.shade500, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
         actions: [
 
@@ -1373,33 +1386,52 @@ class _ForwardSelectorSheet extends ConsumerWidget {
 
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.7,
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
       ),
       decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 20,
+            offset: Offset(0, -5),
+          ),
+        ],
       ),
-      padding: const EdgeInsets.fromLTRB(0, 20, 0, 0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 0),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 16, 12),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
                   'Forward to...',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    letterSpacing: -0.5,
+                  ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(Icons.close_rounded),
+                  color: AppColors.textSecondary,
                   onPressed: () => Navigator.pop(context),
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.background,
+                    padding: const EdgeInsets.all(8),
+                  ),
                 ),
               ],
             ),
           ),
-          const Divider(),
+          const Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
+          
+          // List
           Expanded(
             child: FutureBuilder<List<ConversationSummary>>(
               future: listFuture,
@@ -1408,18 +1440,47 @@ class _ForwardSelectorSheet extends ConsumerWidget {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Text(
+                        'Error loading chats', 
+                        style: TextStyle(color: AppColors.danger),
+                      ),
+                    ),
+                  );
                 }
                 
                 final list = snapshot.data ?? [];
                 
                 if (list.isEmpty) {
-                  return const Center(child: Text('No conversations found'));
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.chat_bubble_outline, size: 48, color: AppColors.textSecondary.withOpacity(0.5)),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No conversations found',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
                 }
                 
-                return ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 24),
+                return ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                   itemCount: list.length,
+                  separatorBuilder: (context, index) => const Divider(
+                    height: 1, 
+                    indent: 80, 
+                    endIndent: 24, 
+                    color: Color(0xFFF1F5F9)
+                  ),
                   itemBuilder: (context, index) {
                     final item = list[index];
                     final currentUserId = ref.read(authControllerProvider).user?.id;
@@ -1427,17 +1488,64 @@ class _ForwardSelectorSheet extends ConsumerWidget {
                     final participant = item.participantForDisplay(currentUserId);
                     final isGroup = item.isGroup;
                     
-                    return ListTile(
-                      leading: AppAvatar(
-                         imageUrl: isGroup ? item.avatarUrl : participant?.avatarUrl,
-                         initials: title.isNotEmpty ? title[0] : '?',
-                         size: 40,
-                      ),
-                      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-                      subtitle: isGroup 
-                        ? Text('${item.participants.length} members')
-                        : null,
+                    return InkWell(
                       onTap: () => Navigator.pop(context, item.id),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        child: Row(
+                          children: [
+                            AppAvatar(
+                               imageUrl: isGroup ? item.avatarUrl : participant?.avatarUrl,
+                               initials: title.isNotEmpty ? title[0] : '?',
+                               size: 48,
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (isGroup)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        '${item.participants.length} members',
+                                        style: const TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Send',
+                                style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     );
                   },
                 );
