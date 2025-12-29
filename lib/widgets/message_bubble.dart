@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/message.dart';
-import '../screens/media_viewer_screen.dart';
 import '../theme/color_tokens.dart';
 
 class MessageBubble extends StatelessWidget {
@@ -12,68 +10,21 @@ class MessageBubble extends StatelessWidget {
     this.onAttachmentTap,
     this.onDelete,
     this.onForward,
+    this.isSelectionMode = false,
+    this.isSelected = false,
+    this.onTap,
+    this.onLongPress,
   });
 
   final Message message;
   final void Function(String url, _AttachmentKind kind)? onAttachmentTap;
   final void Function(String messageId)? onDelete;
   final void Function(Message message)? onForward;
+  final bool isSelectionMode;
+  final bool isSelected;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
-  void _showMessageMenu(BuildContext context, Offset position) {
-    if (onDelete == null && onForward == null) return;
-
-    final items = <PopupMenuEntry<String>>[];
-    
-    if (onForward != null) {
-      items.add(
-        const PopupMenuItem(
-          value: 'forward',
-          child: Row(
-            children: [
-              Icon(Icons.forward, size: 20, color: Colors.black54),
-              SizedBox(width: 12),
-              Text('Forward'),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (onDelete != null && message.isMine) {
-      items.add(
-        const PopupMenuItem(
-          value: 'delete',
-          child: Row(
-            children: [
-              Icon(Icons.delete_outline, size: 20, color: Colors.red),
-              SizedBox(width: 12),
-              Text('Delete', style: TextStyle(color: Colors.red)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (items.isEmpty) return;
-
-    showMenu<String>(
-      context: context,
-      position: RelativeRect.fromLTRB(
-        position.dx,
-        position.dy,
-        position.dx + 1,
-        position.dy + 1,
-      ),
-      items: items,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ).then((value) {
-      if (value == 'delete') {
-         onDelete?.call(message.id);
-      } else if (value == 'forward') {
-         onForward?.call(message);
-      }
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -128,69 +79,126 @@ class MessageBubble extends StatelessWidget {
           top: 4,
           bottom: 4,
         ),
-        child: GestureDetector(
-          onLongPressStart: (details) {
-            _showMessageMenu(context, details.globalPosition);
-          },
-          child: DecoratedBox(
-            decoration: bubbleDecoration,
-            child: Padding(
-              padding: (!hasText && message.attachments.isNotEmpty)
-                  ? const EdgeInsets.all(4)
-                  : const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Column(
-                crossAxisAlignment:
-                    isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (message.attachments.isNotEmpty)
-                    Padding(
-                      padding: EdgeInsets.only(bottom: hasText ? 10 : 2),
-                      child: _AttachmentGrid(
-                        attachments: message.attachments,
-                        onTap: (url, kind) => onAttachmentTap?.call(url, kind),
-                      ),
-                    ),
-                  if (hasText)
-                    Text(
-                      message.body,
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 15.5,
-                        height: 1.5,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.1,
-                      ),
-                    ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: isMine
-                        ? MainAxisAlignment.end
-                        : MainAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.done_all_rounded,
-                        size: 16,
-                        color: metaColor,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        message.formattedTime,
-                        style: TextStyle(
-                          color: metaColor,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Checkbox on left for received messages
+            if (isSelectionMode && !isMine)
+              Padding(
+                padding: const EdgeInsets.only(right: 8, top: 8),
+                child: GestureDetector(
+                  onTap: onTap,
+                  child: _SelectionCheckbox(isSelected: isSelected),
+                ),
+              ),
+            // Message bubble
+            Flexible(
+              child: GestureDetector(
+                onTap: isSelectionMode ? onTap : null,
+                onLongPressStart: isSelectionMode ? null : (details) {
+                  onLongPress?.call();
+                },
+                child: DecoratedBox(
+                  decoration: bubbleDecoration,
+                  child: Padding(
+                    padding: (!hasText && message.attachments.isNotEmpty)
+                        ? const EdgeInsets.all(4)
+                        : const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    child: Column(
+                      crossAxisAlignment:
+                          isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (message.attachments.isNotEmpty)
+                          Padding(
+                            padding: EdgeInsets.only(bottom: hasText ? 10 : 2),
+                            child: _AttachmentGrid(
+                              attachments: message.attachments,
+                              onTap: (url, kind) => onAttachmentTap?.call(url, kind),
+                            ),
+                          ),
+                        if (hasText)
+                          Text(
+                            message.body,
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 15.5,
+                              height: 1.5,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.1,
+                            ),
+                          ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: isMine
+                              ? MainAxisAlignment.end
+                              : MainAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.done_all_rounded,
+                              size: 16,
+                              color: metaColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              message.formattedTime,
+                              style: TextStyle(
+                                color: metaColor,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
-          ),
+            // Checkbox on right for sent messages
+            if (isSelectionMode && isMine)
+              Padding(
+                padding: const EdgeInsets.only(left: 8, top: 8),
+                child: GestureDetector(
+                  onTap: onTap,
+                  child: _SelectionCheckbox(isSelected: isSelected),
+                ),
+              ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _SelectionCheckbox extends StatelessWidget {
+  const _SelectionCheckbox({required this.isSelected});
+
+  final bool isSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isSelected ? AppColors.primary : Colors.white,
+        border: Border.all(
+          color: isSelected ? AppColors.primary : Colors.grey.shade400,
+          width: 2,
+        ),
+      ),
+      child: isSelected
+          ? const Icon(
+              Icons.check,
+              size: 16,
+              color: Colors.white,
+            )
+          : null,
     );
   }
 }

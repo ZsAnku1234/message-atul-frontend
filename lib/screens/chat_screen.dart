@@ -39,6 +39,8 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _scrollController = ScrollController();
   bool _isLeaving = false;
+  bool _isSelectionMode = false;
+  final Set<String> _selectedMessageIds = {};
 
   @override
   void initState() {
@@ -197,6 +199,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  void _enterSelectionMode(String messageId) {
+    setState(() {
+      _isSelectionMode = true;
+      _selectedMessageIds.clear();
+      _selectedMessageIds.add(messageId);
+    });
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _isSelectionMode = false;
+      _selectedMessageIds.clear();
+    });
+  }
+
+  void _toggleMessageSelection(String messageId) {
+    setState(() {
+      if (_selectedMessageIds.contains(messageId)) {
+        _selectedMessageIds.remove(messageId);
+        // Exit selection mode if no messages selected
+        if (_selectedMessageIds.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedMessageIds.add(messageId);
+      }
+    });
+  }
+
   void _scrollToBottom() {
     if (!_scrollController.hasClients) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -215,8 +246,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final conversation = chatState.activeConversation;
     final currentUserId = authState.user?.id;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-
     final displayTitle = conversation?.titleFor(currentUserId) ?? '';
     final primaryParticipant =
         conversation?.participantForDisplay(currentUserId);
@@ -229,100 +258,127 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final canSend = conversation == null || !adminOnlyMessaging || isAdmin;
     final messageItems = _buildMessageTimeline(chatState.messages);
 
-    return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 0,
-        title: conversation == null
-            ? const SizedBox.shrink()
-            : InkWell(
-                onTap: () {
-                   Navigator.of(context).push(
-                     MaterialPageRoute(
-                       builder: (_) => ChatMediaGalleryScreen(
-                         conversationId: widget.conversationId,
-                         title: displayTitle,
-                       ),
-                     ),
-                   );
-                },
-                child: Row(
-                  children: [
-                    AppAvatar(
-                      imageUrl: isGroup
-                          ? conversation.avatarUrl
-                          : primaryParticipant?.avatarUrl,
-                      initials: isGroup
-                          ? (displayTitle.isNotEmpty ? displayTitle[0] : '?')
-                          : (primaryParticipant != null
-                              ? (primaryParticipant.displayName.isNotEmpty
-                                  ? primaryParticipant.displayName[0]
-                                  : '?')
-                              : '?'),
-                      size: 42,
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          displayTitle,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 18),
-                        ),
-                        Text(
-                          '${conversation.participants.length} participants',
-                          style: TextStyle(
-                              color: Colors.grey.shade500, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-        actions: [
+    // Check if all selected messages are owned by current user
+    final canDeleteSelected = _selectedMessageIds.isEmpty
+        ? false
+        : chatState.messages
+            .where((msg) => _selectedMessageIds.contains(msg.id))
+            .every((msg) => msg.isMine);
 
-          if (conversation != null && isGroup)
-            PopupMenuButton<String>(
-              enabled: !_isLeaving,
-              icon: _isLeaving
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  : const Icon(Icons.more_vert),
-              onSelected: (value) {
-                if (value == 'manage') {
-                  _openGroupManagement();
-                } else if (value == 'leave') {
-                  _confirmLeaveGroup();
-                }
-              },
-              itemBuilder: (context) {
-                final entries = <PopupMenuEntry<String>>[];
-                if (isAdmin) {
-                  entries.add(const PopupMenuItem(
-                    value: 'manage',
-                    child: Text('Manage group'),
-                  ));
-                }
-                entries.add(const PopupMenuItem(
-                  value: 'leave',
-                  child: Text('Leave group'),
-                ));
-                return entries;
-              },
+    return Scaffold(
+      appBar: _isSelectionMode
+          ? AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _exitSelectionMode,
+              ),
+              title: Text('${_selectedMessageIds.length} selected'),
+              actions: [
+                if (isGroup ? isAdmin : true)
+                  IconButton(
+                    icon: const Icon(Icons.forward),
+                    onPressed: _selectedMessageIds.isEmpty
+                        ? null
+                        : _handleBulkForward,
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: canDeleteSelected ? _handleBulkDelete : null,
+                ),
+              ],
             )
-          else
-            IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: () {},
+          : AppBar(
+              titleSpacing: 0,
+              title: conversation == null
+                  ? const SizedBox.shrink()
+                  : InkWell(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ChatMediaGalleryScreen(
+                              conversationId: widget.conversationId,
+                              title: displayTitle,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          AppAvatar(
+                            imageUrl: isGroup
+                                ? conversation.avatarUrl
+                                : primaryParticipant?.avatarUrl,
+                            initials: isGroup
+                                ? (displayTitle.isNotEmpty ? displayTitle[0] : '?')
+                                : (primaryParticipant != null
+                                    ? (primaryParticipant.displayName.isNotEmpty
+                                        ? primaryParticipant.displayName[0]
+                                        : '?')
+                                    : '?'),
+                            size: 42,
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                displayTitle,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600, fontSize: 18),
+                              ),
+                              Text(
+                                '${conversation.participants.length} participants',
+                                style: TextStyle(
+                                    color: Colors.grey.shade500, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+              actions: [
+                if (conversation != null && isGroup)
+                  PopupMenuButton<String>(
+                    enabled: !_isLeaving,
+                    icon: _isLeaving
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : const Icon(Icons.more_vert),
+                    onSelected: (value) {
+                      if (value == 'manage') {
+                        _openGroupManagement();
+                      } else if (value == 'leave') {
+                        _confirmLeaveGroup();
+                      }
+                    },
+                    itemBuilder: (context) {
+                      final entries = <PopupMenuEntry<String>>[];
+                      if (isAdmin) {
+                        entries.add(const PopupMenuItem(
+                          value: 'manage',
+                          child: Text('Manage group'),
+                        ));
+                      }
+                      entries.add(const PopupMenuItem(
+                        value: 'leave',
+                        child: Text('Leave group'),
+                      ));
+                      return entries;
+                    },
+                  )
+                else
+                  IconButton(
+                    icon: const Icon(Icons.more_vert),
+                    onPressed: () {},
+                  ),
+              ],
             ),
-        ],
-      ),
       body: Column(
         children: [
           Expanded(
@@ -361,13 +417,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           return _DateDivider(label: item.label!);
                         }
                         final canForward = isGroup ? isAdmin : true;
+                        final msg = item.message!;
 
                         return MessageBubble(
-                          message: item.message!,
+                          message: msg,
                           onAttachmentTap: (url, kind) =>
                               _handleAttachmentTap(url, kind, chatState.messages),
                           onDelete: _handleDeleteMessage,
                           onForward: canForward ? _handleForwardMessage : null,
+                          isSelectionMode: _isSelectionMode,
+                          isSelected: _selectedMessageIds.contains(msg.id),
+                          onTap: () => _toggleMessageSelection(msg.id),
+                          onLongPress: () => _enterSelectionMode(msg.id),
                         );
                       },
                     ),
@@ -450,6 +511,93 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  Future<void> _handleBulkDelete() async {
+    final count = _selectedMessageIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete $count message${count > 1 ? 's' : ''}?'),
+        content: Text('${count > 1 ? 'These messages' : 'This message'} will be deleted for everyone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final messageIds = _selectedMessageIds.toList();
+    _exitSelectionMode();
+
+    try {
+      final repo = ref.read(chatRepositoryProvider);
+      for (final messageId in messageIds) {
+        await repo.deleteMessage(messageId);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Deleted $count message${count > 1 ? 's' : ''}')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to delete some messages.')),
+      );
+    }
+  }
+
+  Future<void> _handleBulkForward() async {
+    // 1. Show conversation picker
+    final destinationId = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const _ForwardSelectorSheet(),
+    );
+
+    if (destinationId == null) return;
+
+    // 2. Get selected messages
+    final chatState = ref.read(chatControllerProvider);
+    final selectedMessages = chatState.messages
+        .where((msg) => _selectedMessageIds.contains(msg.id))
+        .toList();
+
+    final count = selectedMessages.length;
+    _exitSelectionMode();
+
+    // 3. Forward all selected messages
+    try {
+      final repo = ref.read(chatRepositoryProvider);
+      for (final message in selectedMessages) {
+        await repo.sendMessage(
+          conversationId: destinationId,
+          content: message.body,
+          attachments: message.attachments,
+        );
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Forwarded $count message${count > 1 ? 's' : ''}')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to forward messages')),
+      );
+    }
+  }
+
   Future<void> _handleForwardMessage(Message message) async {
     // 1. Show conversation picker
     final destinationId = await showModalBottomSheet<String>(
@@ -464,13 +612,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // 2. Send message to destination
     try {
-      final chatNotifier = ref.read(chatControllerProvider.notifier);
-      
-      // Temporarily switch to that conversation to send? 
-      // Or just use repository directly? Repository is cleaner.
-      // But ChatNotifier usually manages the socket events.
-      // Easiest: Call sendMessage on the repo, but we need conversationId.
-      
       // We will perform the send in background using the repository
       final repo = ref.read(chatRepositoryProvider);
       await repo.sendMessage(
