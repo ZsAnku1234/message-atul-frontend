@@ -41,6 +41,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isLeaving = false;
   bool _isSelectionMode = false;
   final Set<String> _selectedMessageIds = {};
+  
+  // Drag Selection & Auto Scroll State
+  bool _isDragSelecting = false;
+  bool _initialScrollDone = false;
+  Timer? _autoScrollTimer;
+  final Map<String, GlobalObjectKey> _messageKeys = {};
 
   @override
   void initState() {
@@ -65,6 +71,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void didUpdateWidget(covariant ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.conversationId != widget.conversationId) {
+      _initialScrollDone = false;
       Future.microtask(
         () => ref
             .read(chatControllerProvider.notifier)
@@ -77,6 +84,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _autoScrollTimer?.cancel();
     Future.microtask(() async {
       try {
         const platform = MethodChannel('com.nuttgram.app/security');
@@ -202,8 +210,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _enterSelectionMode(String messageId) {
     setState(() {
       _isSelectionMode = true;
-      _selectedMessageIds.clear();
       _selectedMessageIds.add(messageId);
+      _isDragSelecting = true;
     });
   }
 
@@ -264,6 +272,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         : chatState.messages
             .where((msg) => _selectedMessageIds.contains(msg.id))
             .every((msg) => msg.isMine);
+
+    // Auto-Scroll Logic on Load
+    ref.listen(chatControllerProvider, (previous, next) {
+      if (next.messages.isNotEmpty &&
+          !next.isLoading &&
+          !_initialScrollDone) {
+        _initialScrollDone = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController
+                .jumpTo(_scrollController.position.maxScrollExtent);
+          }
+        });
+      }
+    });
 
     return Scaffold(
       appBar: _isSelectionMode
@@ -388,49 +411,66 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
               child: chatState.isLoading && chatState.messages.isEmpty
                   ? const Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 16,
-                      ),
-                      itemCount: messageItems.length +
-                          (chatState.hasMoreMessages ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        final hasHistoryLoader = chatState.hasMoreMessages;
-                        if (hasHistoryLoader && index == 0) {
-                          // Show pagination loader at the top (oldest side)
-                          return Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: chatState.isLoadingMore
-                                  ? const CircularProgressIndicator()
-                                  : const SizedBox.shrink(),
-                            ),
+                  : Listener(
+                      onPointerMove: _handleDragSelection,
+                      onPointerUp: (_) => _stopDragSelection(),
+                      onPointerCancel: (_) => _stopDragSelection(),
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        physics: _isDragSelecting
+                            ? const NeverScrollableScrollPhysics()
+                            : null,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 16,
+                        ),
+                        itemCount: messageItems.length +
+                            (chatState.hasMoreMessages ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          final hasHistoryLoader = chatState.hasMoreMessages;
+                          if (hasHistoryLoader && index == 0) {
+                            // Show pagination loader at the top (oldest side)
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: chatState.isLoadingMore
+                                    ? const CircularProgressIndicator()
+                                    : const SizedBox.shrink(),
+                              ),
+                            );
+                          }
+
+                          final messageIndex =
+                              hasHistoryLoader ? index - 1 : index;
+                          final item = messageItems[messageIndex];
+                          if (item.isHeader) {
+                            return _DateDivider(label: item.label!);
+                          }
+                          final canForward = isGroup ? isAdmin : true;
+                          final msg = item.message!;
+                          
+                          // Assign Key for Drag Selection
+                          final key = _messageKeys[msg.id] ??=
+                              GlobalObjectKey(msg.id);
+
+                          return MessageBubble(
+                            key: key,
+                            message: msg,
+                            onAttachmentTap: (url, kind) =>
+                                _handleAttachmentTap(
+                                    url, kind, chatState.messages),
+                            onDelete: _handleDeleteMessage,
+                            onForward:
+                                canForward ? _handleForwardMessage : null,
+                            isSelectionMode: _isSelectionMode,
+                            isSelected:
+                                _selectedMessageIds.contains(msg.id),
+                            onTap: () => _toggleMessageSelection(msg.id),
+                            onLongPress: () =>
+                                _enterSelectionMode(msg.id),
                           );
-                        }
-
-                        final messageIndex =
-                            hasHistoryLoader ? index - 1 : index;
-                        final item = messageItems[messageIndex];
-                        if (item.isHeader) {
-                          return _DateDivider(label: item.label!);
-                        }
-                        final canForward = isGroup ? isAdmin : true;
-                        final msg = item.message!;
-
-                        return MessageBubble(
-                          message: msg,
-                          onAttachmentTap: (url, kind) =>
-                              _handleAttachmentTap(url, kind, chatState.messages),
-                          onDelete: _handleDeleteMessage,
-                          onForward: canForward ? _handleForwardMessage : null,
-                          isSelectionMode: _isSelectionMode,
-                          isSelected: _selectedMessageIds.contains(msg.id),
-                          onTap: () => _toggleMessageSelection(msg.id),
-                          onLongPress: () => _enterSelectionMode(msg.id),
-                        );
-                      },
+                        },
+                      ),
                     ),
             ),
           ),
@@ -719,10 +759,91 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (DateUtils.isSameDay(now, dateInIndia)) {
       return 'Today';
     }
-    if (DateUtils.isSameDay(now.subtract(const Duration(days: 1)), dateInIndia)) {
+    if (DateUtils.isSameDay(
+        now.subtract(const Duration(days: 1)), dateInIndia)) {
       return 'Yesterday';
     }
     return DateFormat('MMMM d, yyyy').format(dateInIndia);
+  }
+
+  void _handleDragSelection(PointerMoveEvent event) {
+    if (!_isDragSelecting) return;
+
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final localPosition = renderBox.globalToLocal(event.position);
+    final width = renderBox.size.width;
+    final isLeft = localPosition.dx < width / 2;
+
+    _handleAutoScroll(localPosition.dy, renderBox.size.height);
+
+    for (final entry in _messageKeys.entries) {
+      final key = entry.value;
+      final msgId = entry.key;
+
+      final ctx = key.currentContext;
+      if (ctx == null) continue;
+
+      final box = ctx.findRenderObject() as RenderBox?;
+      if (box == null) continue;
+
+      final boxLocal = box.localToGlobal(Offset.zero, ancestor: renderBox);
+      final rect = boxLocal & box.size;
+
+      if (rect.contains(localPosition)) {
+        final messages = ref.read(chatControllerProvider).messages;
+        // Optimization: if we have map/set it's faster, but list search is ok for reasonable size
+        if (messages.every((m) => m.id != msgId)) continue;
+        final msg = messages.firstWhere((m) => m.id == msgId);
+
+        if (isLeft && !msg.isMine) {
+          if (!_selectedMessageIds.contains(msgId)) {
+            setState(() {
+              _selectedMessageIds.add(msgId);
+            });
+            HapticFeedback.selectionClick();
+          }
+        } else if (!isLeft && msg.isMine) {
+          if (!_selectedMessageIds.contains(msgId)) {
+            setState(() {
+              _selectedMessageIds.add(msgId);
+            });
+            HapticFeedback.selectionClick();
+          }
+        }
+        break; // Found the item under pointer, no need to check overlap others (unless tiny overlap)
+      }
+    }
+  }
+
+  void _handleAutoScroll(double dy, double height) {
+    const threshold = 60.0;
+    if (dy < threshold || dy > height - threshold) {
+      if (_autoScrollTimer == null) {
+        final isDown = dy > height - threshold;
+        final step = isDown ? 15.0 : -15.0;
+        _autoScrollTimer =
+            Timer.periodic(const Duration(milliseconds: 30), (_) {
+          if (!_scrollController.hasClients) return;
+          _scrollController.jumpTo((_scrollController.offset + step).clamp(
+            _scrollController.position.minScrollExtent,
+            _scrollController.position.maxScrollExtent,
+          ));
+        });
+      }
+    } else {
+      _autoScrollTimer?.cancel();
+      _autoScrollTimer = null;
+    }
+  }
+
+  void _stopDragSelection() {
+    setState(() {
+      _isDragSelecting = false;
+    });
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = null;
   }
 }
 

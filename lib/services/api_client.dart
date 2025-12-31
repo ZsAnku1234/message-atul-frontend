@@ -8,8 +8,8 @@ Dio createApiClient() {
     BaseOptions(
       baseUrl: const String.fromEnvironment(
         'API_BASE_URL',
-        defaultValue: 'http://10.133.245.111:3000/api',
-        // defaultValue: 'https://api.nuttgram.com/api',
+        // defaultValue: 'http://10.133.245.111:3000/api',
+        defaultValue: 'https://api.nuttgram.com/api',
       ),
       connectTimeout: _defaultConnectTimeout,
       receiveTimeout: _defaultTransferTimeout,
