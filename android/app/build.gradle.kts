@@ -6,6 +6,7 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -13,20 +14,23 @@ android {
 
     compileSdk = flutter.compileSdkVersion
 
-    val keystoreProperties = Properties()
-    val keystorePropertiesFile = rootProject.file("key.properties")
-    if (keystorePropertiesFile.exists()) {
-        keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-    }
+    // Signing configuration commented out - uncomment and create key.properties for production
+    // val keystoreProperties = Properties()
+    // val keystorePropertiesFile = rootProject.file("key.properties")
+    // if (keystorePropertiesFile.exists()) {
+    //     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    // }
 
-    signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
-            storeFile = file(keystoreProperties["storeFile"] as String)
-            storePassword = keystoreProperties["storePassword"] as String
-        }
-    }
+    // signingConfigs {
+    //     create("release") {
+    //         if (keystoreProperties["keyAlias"] != null) {
+    //             keyAlias = keystoreProperties["keyAlias"] as String
+    //             keyPassword = keystoreProperties["keyPassword"] as String
+    //             storeFile = file(keystoreProperties["storeFile"] as String)
+    //             storePassword = keystoreProperties["storePassword"] as String
+    //         }
+    //     }
+    // }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -51,9 +55,8 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("release")
+            // Using debug signing for now - update with release signing config for production
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 }

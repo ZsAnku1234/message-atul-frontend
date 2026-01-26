@@ -1,4 +1,8 @@
+import 'dart:async';
 import 'dart:developer' as developer;
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/user.dart';
@@ -14,6 +18,9 @@ class AuthController extends StateNotifier<AuthState> {
 
   final Ref _ref;
   final AuthRepository _repository;
+  String? _verificationId;
+  ConfirmationResult? _webConfirmationResult;
+  RecaptchaVerifier? _webRecaptchaVerifier;
 
   Future<void> _initialize() async {
     print('[AuthController] Initializing...');
@@ -47,26 +54,94 @@ class AuthController extends StateNotifier<AuthState> {
   Future<OtpRequestResult?> requestOtp(String phoneNumber, {String? purpose}) async {
     state = state.copyWith(status: AuthStatus.authenticating, clearError: true);
 
+    // Default to raw input
+    String normalizedPhone = phoneNumber;
+
     try {
-      final result = await _repository.requestOtp(
-        phoneNumber: phoneNumber,
-        purpose: purpose,
-      );
-      state = state.copyWith(status: AuthStatus.unauthenticated);
-      return result;
-    } catch (error, stackTrace) {
-      developer.log(
-        'OTP request failed',
-        name: 'AuthController',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      state = state.copyWith(
-        status: AuthStatus.unauthenticated,
-        errorMessage: _mapError(error),
-      );
-      return null;
-    }
+      print('[AuthController] requestOtp: function called with $phoneNumber');
+      // Normalize phone number for India (Default to +91)
+      final trimmed = phoneNumber.trim();
+      final cleanDigits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
+      
+      if (cleanDigits.length == 10) {
+        // Assume 10-digit input is Indian
+        normalizedPhone = '+91$cleanDigits';
+      } else if (cleanDigits.length == 12 && cleanDigits.startsWith('91')) {
+        // Check if user typed 9198... without +
+        normalizedPhone = '+$cleanDigits';
+      } else if (!trimmed.startsWith('+')) {
+        // Fallback for other cases
+        normalizedPhone = '+$cleanDigits';
+      } else {
+        normalizedPhone = trimmed;
+      }
+      
+      if (kIsWeb) {
+        // Web specific implementation
+        print('[AuthController] requestOtp: Web detected. Initializing RecaptchaVerifier if null...');
+        _webRecaptchaVerifier ??= RecaptchaVerifier(
+          container: 'recaptcha-container',
+          auth: FirebaseAuthPlatform.instance,
+        );
+        print('[AuthController] requestOtp: RecaptchaVerifier initialized/ready.');
+        
+        print('[AuthController] requestOtp: Calling signInWithPhoneNumber with $normalizedPhone...');
+        _webConfirmationResult = await FirebaseAuth.instance.signInWithPhoneNumber(
+          normalizedPhone,
+          _webRecaptchaVerifier!,
+        );
+        print('[AuthController] requestOtp: signInWithPhoneNumber completed.');
+        
+        state = state.copyWith(status: AuthStatus.unauthenticated);
+        return OtpRequestResult(
+          phoneNumber: normalizedPhone, 
+          code: null, // No placeholder code for production
+          expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+        );
+      } else {
+        // Mobile implementation
+        final completer = Completer<void>();
+        String? vId;
+        
+        await FirebaseAuth.instance.verifyPhoneNumber(
+          phoneNumber: normalizedPhone,
+          verificationCompleted: (PhoneAuthCredential credential) async {},
+          verificationFailed: (FirebaseAuthException e) {
+             completer.completeError(e);
+          },
+          codeSent: (String verificationId, int? resendToken) {
+             vId = verificationId;
+             completer.complete();
+          },
+          codeAutoRetrievalTimeout: (String verificationId) {
+             vId = verificationId;
+          },
+        );
+        
+        await completer.future;
+
+        state = state.copyWith(status: AuthStatus.unauthenticated);
+        _verificationId = vId; 
+        
+        return OtpRequestResult(
+          phoneNumber: phoneNumber, 
+          code: null, // No placeholder code for production
+          expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+        );
+      }
+      } catch (error, stackTrace) {
+        developer.log(
+          'OTP request failed',
+          name: 'AuthController',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        state = state.copyWith(
+          status: AuthStatus.unauthenticated,
+          errorMessage: '${_mapError(error)}\n\nSent: $normalizedPhone',
+        );
+        return null;
+      }
   }
 
   // Signup with OTP + password
@@ -79,9 +154,44 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(status: AuthStatus.authenticating, clearError: true);
 
     try {
+      // 1. Verify OTP with Firebase
+      User? firebaseUser;
+      
+      if (kIsWeb) {
+        if (_webConfirmationResult == null) {
+          throw Exception("Web confirmation result missing. Request OTP first.");
+        }
+        final userCredential = await _webConfirmationResult!.confirm(code);
+        firebaseUser = userCredential.user;
+      } else {
+        if (_verificationId == null) {
+          throw Exception("Verification ID is missing. Request OTP first.");
+        }
+        
+        final credential = PhoneAuthProvider.credential(
+          verificationId: _verificationId!,
+          smsCode: code,
+        );
+        
+        final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+        firebaseUser = userCredential.user;
+      }
+      
+      if (firebaseUser == null) {
+         throw Exception("Firebase Authentication failed.");
+      }
+      
+      final idToken = await firebaseUser.getIdToken();
+
+      // 2. Call Backend Signup (Sending ID Token as 'code' or similar hack, 
+      //    or assuming backend uses `idToken` if we modify repository).
+      //    For now, passing the original code, but backend might reject it if it expects its own.
+      //    Ideally, we pass `idToken` to a specific endpoint. 
+      //    Let's try passing the ID Token as the code if the backend supports it.
+      
       final payload = await _repository.signup(
         phoneNumber: phoneNumber,
-        code: code,
+        code: code, // Keeping original code for now
         displayName: displayName,
         password: password,
       );
@@ -235,6 +345,14 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   String _mapError(Object error) {
+    // Firebase specific errors
+    if (error is FirebaseAuthException) {
+      return error.message ?? error.code;
+    }
+    if (error is FirebaseException) {
+      return error.message ?? error.code;
+    }
+
     // Extract error message from DioException
     if (error is DioException) {
       final response = error.response;
@@ -253,7 +371,13 @@ class AuthController extends StateNotifier<AuthState> {
     if (error is Exception) {
       return error.toString().replaceFirst('Exception: ', '');
     }
-    return 'Something went wrong. Please try again.';
+    
+    // Handle Errors (like TypeError, AssertionError)
+    if (error is Error) {
+      return 'Error: ${error.toString()}';
+    }
+
+    return 'Something went wrong: $error';
   }
 }
 

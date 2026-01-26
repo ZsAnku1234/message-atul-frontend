@@ -5,9 +5,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'Firebase options have not been configured for web. Run flutterfire configure.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -29,5 +27,14 @@ class DefaultFirebaseOptions {
     messagingSenderId: '247274581964',
     projectId: 'nuttgram-23e1e',
     storageBucket: 'nuttgram-23e1e.firebasestorage.app',
+  );
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: "AIzaSyCSxgphimOY1qU67sm2mioFyqFVG_0K-yg",
+    appId: "1:247274581964:web:de17c3ea88e48dd565f769",
+    messagingSenderId: "247274581964",
+    projectId: "nuttgram-23e1e",
+    authDomain: "nuttgram-23e1e.firebaseapp.com",
+    storageBucket: "nuttgram-23e1e.firebasestorage.app",
   );
 }

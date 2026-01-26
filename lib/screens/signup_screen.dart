@@ -197,6 +197,23 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             context.go('/conversations');
           });
         }
+        
+        // Show detailed error dialog
+        if (next.status == AuthStatus.unauthenticated && next.errorMessage != null) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Authentication Error', style: TextStyle(color: Colors.red)),
+              content: SelectableText(next.errorMessage ?? 'Unknown error'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
       },
     );
 
@@ -303,19 +320,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           validator: _validateOtp,
                         ),
                         
-                        if (_debugCode != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              'Development code: $_debugCode',
-                              style: const TextStyle(
-                                color: AppColors.secondary,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        
+                        /* Debug code removed for production Firebase Auth */
                         const SizedBox(height: 16),
                         
                         // Display Name
