@@ -141,6 +141,43 @@ class AuthRepository {
     }
   }
 
+  // Login with Firebase ID Token
+  Future<AuthPayload> loginWithFirebase({
+    required String idToken,
+    String? displayName,
+    String? password,
+  }) async {
+    final request = <String, dynamic>{
+      'idToken': idToken,
+      if (displayName != null) 'displayName': displayName,
+      if (password != null) 'password': password,
+    };
+
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/auth/firebase-login',
+        data: request,
+      );
+
+      final data = response.data!;
+      final authPayload = AuthPayload(
+        user: UserProfile.fromJson(data['user'] as Map<String, dynamic>),
+        token: data['token'] as String,
+      );
+      await _persistUser(authPayload.user);
+      return authPayload;
+    } on DioException catch (error) {
+      if (_isDemoAuthEnabled(error)) {
+        // Fallback to demo user if connection fails
+        final fallback = _buildDemoPayload(
+            phoneNumber: '+919876543210', displayName: displayName ?? 'Demo User');
+        await _persistUser(fallback.user);
+        return fallback;
+      }
+      rethrow;
+    }
+  }
+
   // Forgot password - request OTP
   Future<OtpRequestResult> forgotPassword({
     required String phoneNumber,

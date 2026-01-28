@@ -183,15 +183,13 @@ class AuthController extends StateNotifier<AuthState> {
       
       final idToken = await firebaseUser.getIdToken();
 
-      // 2. Call Backend Signup (Sending ID Token as 'code' or similar hack, 
-      //    or assuming backend uses `idToken` if we modify repository).
-      //    For now, passing the original code, but backend might reject it if it expects its own.
-      //    Ideally, we pass `idToken` to a specific endpoint. 
-      //    Let's try passing the ID Token as the code if the backend supports it.
-      
-      final payload = await _repository.signup(
-        phoneNumber: phoneNumber,
-        code: code, // Keeping original code for now
+      if (idToken == null) {
+        throw Exception("Failed to retrieve Firebase ID Token.");
+      }
+
+      // 2. Call Backend with Firebase ID Token
+      final payload = await _repository.loginWithFirebase(
+        idToken: idToken,
         displayName: displayName,
         password: password,
       );
@@ -247,25 +245,9 @@ class AuthController extends StateNotifier<AuthState> {
 
   // Forgot password - request OTP
   Future<OtpRequestResult?> forgotPassword(String phoneNumber) async {
-    state = state.copyWith(status: AuthStatus.authenticating, clearError: true);
-
-    try {
-      final result = await _repository.forgotPassword(phoneNumber: phoneNumber);
-      state = state.copyWith(status: AuthStatus.unauthenticated);
-      return result;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Forgot password request failed',
-        name: 'AuthController',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      state = state.copyWith(
-        status: AuthStatus.unauthenticated,
-        errorMessage: _mapError(error),
-      );
-      return null;
-    }
+    // Reuse the existing Firebase OTP request logic
+    // This sets _verificationId / _webConfirmationResult internally
+    return requestOtp(phoneNumber, purpose: 'reset');
   }
 
   // Reset password with OTP
@@ -277,11 +259,46 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(status: AuthStatus.authenticating, clearError: true);
 
     try {
-      final payload = await _repository.resetPassword(
-        phoneNumber: phoneNumber,
-        code: code,
-        newPassword: newPassword,
+      // 1. Verify OTP with Firebase (Same logic as signup)
+      User? firebaseUser;
+      
+      if (kIsWeb) {
+        if (_webConfirmationResult == null) {
+          throw Exception("Web confirmation result missing. Request OTP first.");
+        }
+        final userCredential = await _webConfirmationResult!.confirm(code);
+        firebaseUser = userCredential.user;
+      } else {
+        if (_verificationId == null) {
+          throw Exception("Verification ID is missing. Request OTP first.");
+        }
+        
+        final credential = PhoneAuthProvider.credential(
+          verificationId: _verificationId!,
+          smsCode: code,
+        );
+        
+        final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+        firebaseUser = userCredential.user;
+      }
+      
+      if (firebaseUser == null) {
+         throw Exception("Firebase Authentication failed.");
+      }
+      
+      final idToken = await firebaseUser.getIdToken();
+
+      if (idToken == null) {
+        throw Exception("Failed to retrieve Firebase ID Token.");
+      }
+
+      // 2. Call Backend to update password using loginWithFirebase
+      // This will update the user's password if provided
+      final payload = await _repository.loginWithFirebase(
+        idToken: idToken,
+        password: newPassword,
       );
+
       await _repository.persistToken(payload.token);
       state = AuthState.authenticated(payload.user);
       return true;

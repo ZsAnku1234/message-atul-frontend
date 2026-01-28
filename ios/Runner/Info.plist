@@ -55,5 +55,17 @@
 		<string>Microphone access is needed to record video messages.</string>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<!-- This is the REVERSED_CLIENT_ID from GoogleService-Info.plist -->
+					<string>com.googleusercontent.apps.247274581964-1405ccf98e50fe0065f769</string>
+				</array>
+			</dict>
+		</array>
 	</dict>
 </plist>
